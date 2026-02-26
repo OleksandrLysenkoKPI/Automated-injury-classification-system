@@ -1,2 +1,3 @@
 .venv/
 /DICOM_image_converter/test_data
+*.png
