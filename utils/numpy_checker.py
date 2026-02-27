@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+# TODO: Add error handling
 def verify_npy_conversion(original_hu, npy_path):
     """Compares original data (after rescale) with normilized NumPy file"""
     npy_pixels = np.load(npy_path)

@@ -9,7 +9,7 @@ if __name__ == "__main__":
     
     processor = DICOMProcessor(img_path)
     
-    processor.save_as_png(f"{output_name}.png")
-    processor.save_as_npy(f"{output_name}.npy")
+    processor.save_as_png(f"data/converted_PNG/{output_name}.png")
+    processor.save_as_npy(f"data/converted_NumPy/{output_name}.npy")
     
-    verify_npy_conversion(processor.pixels_hu, f"./{output_name}.npy")
+    verify_npy_conversion(processor.pixels_hu, f"data/converted_NumPy/{output_name}.npy")
