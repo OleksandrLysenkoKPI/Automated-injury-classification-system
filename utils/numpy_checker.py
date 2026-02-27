@@ -1,49 +1,25 @@
 import numpy as np
-import pydicom
 import matplotlib.pyplot as plt
 
-def plot_comparison(dicom_img, npy_img):
-    plt.figure(figsize=(12, 6))
-
-    plt.subplot(1, 2, 1)
-    plt.title("Оригінальний DICOM")
-    plt.imshow(dicom_img, cmap='gray')
-    plt.axis('off')
-
-    plt.subplot(1, 2, 2)
-    plt.title("Завантажений NumPy")
-    plt.imshow(npy_img, cmap='gray')
-    plt.axis('off')
-
-    plt.show()
-
-dicom_path = 'data/test_data/series-00000/image-00006.dcm'
-ds = pydicom.dcmread(dicom_path)
-dicom_pixels = ds.pixel_array
-
-npy_path = './image-00006.npy'
-npy_pixels = np.load(npy_path)
-
-# Перевірка розмірності та типу даних
-print(f"DICOM shape: {dicom_pixels.shape}, dtype: {dicom_pixels.dtype}")
-print(f"NumPy shape: {npy_pixels.shape}, dtype: {npy_pixels.dtype}")
-
-if dicom_pixels.shape == npy_pixels.shape:
-    print("✅ Розміри збігаються")
-else:
-    print("❌ Розміри НЕ збігаються!")
-
-# Перевірка значень (Min, Max, Mean)
-print(f"DICOM range: [{dicom_pixels.min()}, {dicom_pixels.max()}], mean: {dicom_pixels.mean():.2f}")
-print(f"NumPy range: [{npy_pixels.min()}, {npy_pixels.max()}], mean: {npy_pixels.mean():.2f}")
-
-# Перевірка на повну ідентичність
-if np.array_equal(dicom_pixels, npy_pixels):
-    print("✅ Масиви ідентичні")
-else:
-    # При Rescale Slope/Intercept, вони можуть не бути ідентичними
-    diff = np.abs(dicom_pixels.astype(float) - npy_pixels.astype(float))
-    print(f"⚠️ Масиви мають розбіжності. Максимальна різниця: {np.max(diff)}")
+def verify_npy_conversion(original_hu, npy_path):
+    """Compares original data (after rescale) with normilized NumPy file"""
+    npy_pixels = np.load(npy_path)
     
-
-plot_comparison(dicom_pixels, npy_pixels)
+    print("/n=== Verification Report ===")
+    print(f"Original HU shape: {original_hu.shape}")
+    print(f"NumPy shape:       {npy_pixels.shape}")
+    
+    correlation = np.corrcoef(original_hu.flatten(), npy_pixels.flatten())[0, 1]
+    print(f"Data Correlation:  {correlation:.6f} (1.0 is perfect)")
+    
+    if original_hu.shape == npy_pixels.shape and correlation > 0.99:
+        print("✅ Conversion was successful!")
+    else:
+        print("❌ Detected differences in data structure.")
+        
+    fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+    axes[0].imshow(original_hu, cmap='gray')
+    axes[0].set_title("Original (HU)")
+    axes[1].imshow(npy_pixels, cmap='gray')
+    axes[1].set_title("Saved NumPy (Normalized)")
+    plt.show()

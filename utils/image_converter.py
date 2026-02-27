@@ -3,37 +3,42 @@ from pydicom.pixels import apply_rescale
 import numpy as np
 from PIL import Image
 
-def convert_dicom_to_png(dicom_path, output_path="Converted_DICOM.png"):
-    ds = pydicom.dcmread(dicom_path)
-
-    image_pixels = ds.pixel_array.astype(float)
-
-    # Rescale Slope and Intercept
-    image_hu = apply_rescale(image_pixels, ds)
-
-    # Rescaling to 0-255
-    img_min = image_hu.min()
-    img_max = image_hu.max()
-    norm_image = ((image_hu - img_min) / (img_max - img_min)) * 255
+class DICOMProcessor:
+    def __init__(self, dicom_path):
+        self.dicom_path = dicom_path
+        self.ds = pydicom.dcmread(dicom_path)
+        self._pixels_hu = None
         
-    final_image = Image.fromarray(norm_image.astype(np.uint8))
-    final_image.save(output_path)
-    print(f"Saved as PNG: {output_path}")
-
-
-def convert_dicom_to_npy(dicom_path, output_path):
-    ds = pydicom.dcmread(dicom_path)
+    @property
+    def pixels_hu(self):
+        """Lazy download and rescaling into Hounsfield units (HU)"""
+        if self._pixels_hu is None:
+            raw_pixels = self.ds.pixel_array.astype(np.float32)
+            self._pixels_hu = apply_rescale(raw_pixels, self.ds)
+        return self._pixels_hu
     
-    image_hu = apply_rescale(ds.pixel_array, ds).astype(np.float32)
-    
-    # Normalization (0.0 to 1.0)
-    img_min = image_hu.min()
-    img_max = image_hu.max()
-    
-    if img_max - img_min != 0:
-        normalized = (image_hu - img_min) / (img_max - img_min)
-    else:
-        normalized = np.zeros_like(image_hu)
+    def get_normalized(self, target_range=(0, 1)):
+        """General method for data normalization"""
+        img_min = self.pixels_hu.min()
+        img_max = self.pixels_hu.max()
         
-    np.save(output_path, normalized)
-    print(f"Saved as NumPy: {output_path}")
+        if img_max - img_min == 0:
+            return np.zeros_like(self.pixels_hu)
+        
+        normalized = (self.pixels_hu - img_min) / (img_max - img_min)
+        
+        if target_range == (0, 255):
+            return (normalized * 255).astype(np.uint8)
+        
+        return normalized.astype(np.float32)
+    
+    def save_as_png(self, output_path):
+        pixels_8bit = self.get_normalized(target_range=(0, 255))
+        image = Image.fromarray(pixels_8bit)
+        image.save(output_path)
+        print(f"PNG збережено: {output_path}")
+        
+    def save_as_npy(self, output_path):
+        pixels_norm = self.get_normalized(target_range=(0, 1))
+        np.save(output_path, pixels_norm)
+        print(f"NumPy збережено: {output_path}")
