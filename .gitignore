@@ -1,3 +1,5 @@
 .venv/
-/DICOM_image_converter/test_data
+test_data/
+__pycache__/
 *.png
+*.npy
