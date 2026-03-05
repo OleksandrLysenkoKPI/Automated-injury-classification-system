@@ -8,73 +8,94 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 class DICOMProcessor:
-    def __init__(self, dicom_path):
-        self.dicom_path = dicom_path
+    def __init__(self):
+        """Initialized without a path to allow reuse for batch processing."""
+        self.ds = None
         self._pixels_hu = None
-        
+
+    def load_file(self, dicom_path):
+        """Loads a single DICOM file into the processor."""
         if not os.path.exists(dicom_path):
-            logging.error(f"Initialization failed. Path does not exist: {dicom_path}")
-            raise FileNotFoundError(f"File not found: {dicom_path}")
+            logging.error(f"Path does not exist: {dicom_path}")
+            return False
         
         try:
             self.ds = pydicom.dcmread(dicom_path)
-        except pydicom.errors.InvalidDicomError:
-            logging.error(f"Initialization failed. Invalid DICOM format: {dicom_path}")
-            raise ValueError(f"File is not valid DICOM: {dicom_path}")
+            self._pixels_hu = None
+            return True
         except Exception as e:
-            logging.error(f"Initialization failed. Unexpected error for {dicom_path}: {e}")
-            raise
+            logging.error(f"Failed to load {dicom_path}: {e}")
+            return False
     
-    # TODO: Add error handling
     @property
     def pixels_hu(self):
         """Lazy loading and rescaling into Hounsfield units (HU)"""
+        if self.ds is None:
+            raise ValueError("No DICOM file loaded. Call load_file() first.")
+        
         if self._pixels_hu is None:
-            raw_pixels = self.ds.pixel_array.astype(np.float32)
-            self._pixels_hu = apply_rescale(raw_pixels, self.ds)
+            try:
+                raw_pixels = self.ds.pixel_array.astype(np.float32)
+                self._pixels_hu = apply_rescale(raw_pixels, self.ds)
+            except AttributeError as e:
+                logging.warning(f"Rescale tags missing, using raw pixel data: {e}")
+                self._pixels_hu = self.ds.pixel_array.astype(np.float32)
         return self._pixels_hu
     
-    # TODO: Add error handling
     def get_normalized(self, target_range=(0, 1)):
-        """General method for data normalization"""
-        img_min = self.pixels_hu.min()
-        img_max = self.pixels_hu.max()
-        
-        if img_max - img_min == 0:
-            return np.zeros_like(self.pixels_hu)
-        
-        normalized = (self.pixels_hu - img_min) / (img_max - img_min)
-        
-        if target_range == (0, 255):
-            return (normalized * 255).astype(np.uint8)
-        
-        return normalized.astype(np.float32)
+        """Normalizes pixel values to a specific range."""
+        try:
+            hu_data = self.pixels_hu
+            img_min, img_max = hu_data.min(), hu_data.max()
+            
+            if img_max - img_min == 0:
+                return np.zeros_like(hu_data)
+            
+            normalized = (hu_data - img_min) / (img_max - img_min)
+            
+            if target_range == (0, 255):
+                return (normalized * 255).astype(np.uint8)
+            return normalized.astype(np.float32)
+        except Exception as e:
+            logging.error(f"Normalization error: {e}")
+            return None
     
     def save_as_png(self, output_path):
-        try:
-            data = self.get_normalized(target_range=(0, 255))
-            if data is None: return
-            
-            target_dir = os.path.dirname(output_path)
-            if target_dir:
-                os.makedirs(target_dir, exist_ok=True)
-        
+        data = self.get_normalized(target_range=(0, 255))
+        if data is not None:
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
             Image.fromarray(data).save(output_path)
-            logging.info(f"Successfully saved file as PNG: {output_path}")
-        except Exception as e:
-            logging.error(f"Failed to save file as PNG {output_path}: {e}")
+            return True
+        return False
         
     def save_as_npy(self, output_path):
-        try:
-            data = self.get_normalized(target_range=(0, 1))
-            if data is None: return
-            
-            target_dir = os.path.dirname(output_path)
-            if target_dir:
-                os.makedirs(target_dir, exist_ok=True)
-            
+        data = self.get_normalized(target_range=(0, 1))
+        if data is not None:
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
             np.save(output_path, data)
-            logging.info(f"Successfully saved file as NumPy: {output_path}")
-        except Exception as e:
-            logging.error(f"Failed to save file as NumPy {output_path}: {e}")
-        
+            return True
+        return False
+    
+    def batch_conversion(self, input_dir, output_dir, conversion_type="png"):
+        """
+        Iterates through a folder and converts all DICOM files.
+        conversion_type: 'png', 'npy', or 'both'
+        """
+        if not os.path.isdir(input_dir):
+            logging.error(f"Input directory not found: {input_dir}")
+            return
+
+        os.makedirs(output_dir, exist_ok=True)
+
+        files = [f for f in os.listdir(input_dir) if f.endswith('.dcm')]
+        logging.info(f"Found {len(files)} DICOM files in {input_dir}")
+
+        for filename in files:
+            file_path = os.path.join(input_dir, filename)
+            base_name = os.path.splitext(filename)[0]
+            
+            if self.load_file(file_path):
+                if conversion_type in ["png", "both"]:
+                    self.save_as_png(os.path.join(output_dir, f"{base_name}.png"))
+                if conversion_type in ["npy", "both"]:
+                    self.save_as_npy(os.path.join(output_dir, f"{base_name}.npy"))

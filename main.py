@@ -1,15 +1,21 @@
 from utils.image_converter import DICOMProcessor
 from utils.numpy_checker import verify_npy_conversion
+import os
 
 
 
 if __name__ == "__main__":
-    img_path = "data/test_data/series-00000/image-00006.dcm"
-    output_name = "image-00006"
+    input_folder = "data/test_data/series-00000"
+    output_png_folder = "data/converted_PNG"
+    output_npy_folder = "data/converted_NumPy"
     
-    processor = DICOMProcessor(img_path)
+    processor = DICOMProcessor()
     
-    processor.save_as_png(f"data/converted_PNG/{output_name}.png")
-    processor.save_as_npy(f"data/converted_NumPy/{output_name}.npy")
+    processor.batch_conversion(input_folder, output_png_folder, conversion_type="png")
+    processor.batch_conversion(input_folder, output_npy_folder, conversion_type="npy")
     
-    verify_npy_conversion(processor.pixels_hu, f"data/converted_NumPy/{output_name}.npy")
+    test_file = os.path.join(input_folder, "image-00006.dcm")
+    if processor.load_file(test_file):
+        npy_path = os.path.join(output_npy_folder, "image-00006.npy")
+        processor.save_as_npy(npy_path)
+        verify_npy_conversion(processor.pixels_hu, npy_path)
