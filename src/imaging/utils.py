@@ -6,7 +6,7 @@ def verify_npy_conversion(original_hu, npy_path):
     """Compares original data (after rescale) with normilized NumPy file"""
     npy_pixels = np.load(npy_path)
     
-    print("/n=== Verification Report ===")
+    print("\n=== Verification Report ===")
     print(f"Original HU shape: {original_hu.shape}")
     print(f"NumPy shape:       {npy_pixels.shape}")
     

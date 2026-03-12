@@ -1,8 +1,6 @@
-from utils.image_converter import DICOMProcessor
-from utils.numpy_checker import verify_npy_conversion
+from src.imaging.image_converter import DICOMProcessor
+from src.imaging.utils import verify_npy_conversion
 import os
-
-
 
 if __name__ == "__main__":
     input_folder = "data/test_data/series-00000"
