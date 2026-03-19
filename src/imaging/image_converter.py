@@ -1,5 +1,5 @@
 import pydicom
-from pydicom.pixels import apply_rescale
+from pydicom.pixels.processing import apply_rescale
 import numpy as np
 from PIL import Image
 import os
@@ -9,7 +9,6 @@ logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 class DICOMProcessor:
     def __init__(self):
-        """Initialized without a path to allow reuse for batch processing."""
         self.ds = None
         self._pixels_hu = None
 
@@ -63,10 +62,28 @@ class DICOMProcessor:
     def save_as_png(self, output_path):
         data = self.get_normalized(target_range=(0, 255))
         if data is not None:
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            Image.fromarray(data).save(output_path)
-            return True
-        return False
+            data = np.squeeze(data)
+            
+            if data.ndim == 3:
+                num_slices = data.shape[0]
+                base_path = output_path.replace('.png', '')
+                
+                for i in range(num_slices):
+                    slice_data = data[i, :, :]
+                    dicom_name = os.path.basename(base_path)
+                    dicom_dir = os.path.join(os.path.dirname(base_path), dicom_name)
+                    os.makedirs(dicom_dir, exist_ok=True)
+                    slice_path = os.path.join(dicom_dir, f"slice{i:03d}.png")
+                    Image.fromarray(slice_data).save(slice_path)
+                
+                logging.info(f"Saved {num_slices} slices from one DICOM to PNG")
+                return True
+            elif data.ndim == 2:
+                Image.fromarray(data).save(output_path)
+                return True
+            else:
+                logging.error(f"Unsupported shape: {data.shape}")
+                return False
         
     def save_as_npy(self, output_path):
         data = self.get_normalized(target_range=(0, 1))
@@ -99,3 +116,28 @@ class DICOMProcessor:
                     self.save_as_png(os.path.join(output_dir, f"{base_name}.png"))
                 if conversion_type in ["npy", "both"]:
                     self.save_as_npy(os.path.join(output_dir, f"{base_name}.npy"))
+                    
+    def process_all_conditions(self, root_dir, output_base_png, output_base_npy):
+        """
+        Iterates through all the branch of a specified path and converts files,
+        recreating folder structure in output directories
+        """
+        for root, dirs, files in os.walk(root_dir):
+            dicom_files = [f for f in files if f.endswith('.dcm')]
+            
+            if not dicom_files:
+                continue
+            
+            
+            relative_path = os.path.relpath(root, root_dir)
+            
+            target_png_dir = os.path.join(output_base_png, relative_path)
+            target_npy_dir = os.path.join(output_base_npy, relative_path)
+            
+            os.makedirs(target_png_dir, exist_ok=True)
+            os.makedirs(target_npy_dir, exist_ok=True)
+            
+            logging.info(f"Processing folder: {relative_path}")
+            
+            self.batch_conversion(root, target_png_dir, conversion_type="png")
+            self.batch_conversion(root, target_npy_dir, conversion_type="npy")
