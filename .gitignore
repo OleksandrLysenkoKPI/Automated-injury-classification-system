@@ -1,5 +1,6 @@
 # Custom ignores
-data/*
+data
+logs
 *.png
 *.npy
 *.pth
