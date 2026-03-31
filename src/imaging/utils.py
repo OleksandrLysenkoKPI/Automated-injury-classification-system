@@ -1,7 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import os
-import logging
+from ..logger_module.logger import CustomLogger
+
+logger = CustomLogger("Imaging_utils_log")
 
 def verify_npy_conversion(processor, dicom_path, npy_path):
     """Compares original DICOM with loaded NumPy file"""
@@ -58,5 +60,5 @@ def verify_npy_conversion(processor, dicom_path, npy_path):
         plt.show()
         return True
     except Exception as e:
-        logging.error(f"Verification error: {e}")
+        logger.error(f"Verification error: {e}")
         return False

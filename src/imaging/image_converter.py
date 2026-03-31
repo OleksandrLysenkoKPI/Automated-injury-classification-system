@@ -3,9 +3,9 @@ from pydicom.pixels.processing import apply_rescale
 import numpy as np
 from PIL import Image
 import os
-import logging
+from ..logger_module.logger import CustomLogger
 
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+logger = CustomLogger("Imaging_log")
 
 class DICOMProcessor:
     def __init__(self):
@@ -15,7 +15,7 @@ class DICOMProcessor:
     def load_file(self, dicom_path):
         """Loads a single DICOM file into the processor."""
         if not os.path.exists(dicom_path):
-            logging.error(f"Path does not exist: {dicom_path}")
+            logger.error(f"Path does not exist: {dicom_path}")
             return False
         
         try:
@@ -23,7 +23,7 @@ class DICOMProcessor:
             self._pixels_hu = None
             return True
         except Exception as e:
-            logging.error(f"Failed to load {dicom_path}: {e}")
+            logger.error(f"Failed to load {dicom_path}: {e}")
             return False
     
     @property
@@ -37,7 +37,7 @@ class DICOMProcessor:
                 raw_pixels = self.ds.pixel_array.astype(np.float32)
                 self._pixels_hu = apply_rescale(raw_pixels, self.ds)
             except AttributeError as e:
-                logging.warning(f"Rescale tags missing, using raw pixel data: {e}")
+                logger.warning(f"Rescale tags missing, using raw pixel data: {e}")
                 self._pixels_hu = self.ds.pixel_array.astype(np.float32)
         return self._pixels_hu
     
@@ -56,7 +56,7 @@ class DICOMProcessor:
                 return (normalized * 255).astype(np.uint8)
             return normalized.astype(np.float32)
         except Exception as e:
-            logging.error(f"Normalization error: {e}")
+            logger.error(f"Normalization error: {e}")
             return None
     
     def save_as_png(self, output_path):
@@ -76,13 +76,13 @@ class DICOMProcessor:
                     slice_path = os.path.join(dicom_dir, f"slice{i:03d}.png")
                     Image.fromarray(slice_data).save(slice_path)
                 
-                logging.info(f"Saved {num_slices} slices from one DICOM to PNG")
+                logger.info(f"Saved {num_slices} slices from one DICOM to PNG")
                 return True
             elif data.ndim == 2:
                 Image.fromarray(data).save(output_path)
                 return True
             else:
-                logging.error(f"Unsupported shape: {data.shape}")
+                logger.error(f"Unsupported shape: {data.shape}")
                 return False
         
     def save_as_npy(self, output_path):
@@ -99,13 +99,13 @@ class DICOMProcessor:
         conversion_type: 'png', 'npy', or 'both'
         """
         if not os.path.isdir(input_dir):
-            logging.error(f"Input directory not found: {input_dir}")
+            logger.error(f"Input directory not found: {input_dir}")
             return
 
         os.makedirs(output_dir, exist_ok=True)
 
         files = [f for f in os.listdir(input_dir) if f.endswith('.dcm')]
-        logging.info(f"Found {len(files)} DICOM files in {input_dir}")
+        logger.info(f"Found {len(files)} DICOM files in {input_dir}")
 
         for filename in files:
             file_path = os.path.join(input_dir, filename)
@@ -137,7 +137,7 @@ class DICOMProcessor:
             os.makedirs(target_png_dir, exist_ok=True)
             os.makedirs(target_npy_dir, exist_ok=True)
             
-            logging.info(f"Processing folder: {relative_path}")
+            logger.info(f"Processing folder: {relative_path}")
             
             self.batch_conversion(root, target_png_dir, conversion_type="png")
             self.batch_conversion(root, target_npy_dir, conversion_type="npy")
