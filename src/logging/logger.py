@@ -5,30 +5,26 @@ from datetime import datetime
 
 class Logger:
     def __init__(self, name: str, base_log_dir: str = "logs", create_folder: bool = True):
-        if create_folder:
-            timestamp = datetime.now().strftime("%d.%m.%y")
-            self.name_dir = Path(base_log_dir) / f"{timestamp}_{name}"
-            self.name_dir.mkdir(parents=True, exist_ok=True)
-            log_file = self.name_dir / "sys.log"
-        else:
-            self.name_dir = Path(base_log_dir)
-            self.name_dir.mkdir(exist_ok=True)
-            log_file = self.name_dir / f"{name}.log"
+        self.logger = logging.getLogger(name)
         
-        self.setup_system_logger(log_file)
+        if not self.logger.hasHandlers():
+            if create_folder:
+                timestamp = datetime.now().strftime("%d.%m.%y")
+                self.name_dir = Path(base_log_dir) / f"{timestamp}_{name}"
+                self.name_dir.mkdir(parents=True, exist_ok=True)
+                log_file = self.name_dir / "sys.log"
+            else:
+                self.name_dir = Path(base_log_dir)
+                self.name_dir.mkdir(exist_ok=True)
+                log_file = self.name_dir / f"{name}.log"
+                
+            self.setup_system_logger(log_file)
     
-    def setup_system_logger(self, log_file: Path):
-        self.logger = logging.getLogger("sys_logger")
+    def setup_system_logger(self, log_file: Path):        
         self.logger.setLevel(logging.INFO)
+        formatter = logging.Formatter('%(asctime)s - %(funcName)s.%(levelname)s: %(message)s', datefmt='%y-%m-%d %H:%M:%S')
         
-        formatter = logging.Formatter('%(asctime)s - %(funcName)s.%(levelname)s: %(message)s')
-        
-        file_handler = RotatingFileHandler(
-            log_file,
-            maxBytes=5*1024*1024,
-            backupCount=3,
-            encoding="utf-8"
-        )
+        file_handler = RotatingFileHandler(log_file, maxBytes=5*1024*1024, backupCount=3, encoding="utf-8")
         file_handler.setFormatter(formatter)
         
         console_handler = logging.StreamHandler()
