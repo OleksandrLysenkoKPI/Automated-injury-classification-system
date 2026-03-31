@@ -3,7 +3,7 @@ from pathlib import Path
 from logging.handlers import RotatingFileHandler
 from datetime import datetime
 
-class Logger:
+class CustomLogger:
     def __init__(self, name: str, base_log_dir: str = "logs", create_folder: bool = True):
         self.logger = logging.getLogger(name)
         
@@ -40,10 +40,14 @@ class Logger:
     def error(self, message: str):
         """Log ERROR messages"""
         self.logger.error(message, stacklevel=2, exc_info=True)
+        
+    def warning(self, message: str):
+        """Log WARNING messages"""
+        self.logger.warning(message, stacklevel=2, exc_info=True)
 
 
 if __name__ == "__main__":
-    custom_logger = Logger(name="Logger_test")
+    custom_logger = CustomLogger(name="Logger_test")
     
     custom_logger.info("This is information log test")
     
