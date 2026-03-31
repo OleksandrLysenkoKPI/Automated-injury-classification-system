@@ -2,8 +2,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import logging
-from ml_utils import log_section
 from data_loader import *
+
+# TODO: REWRITE
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
@@ -89,7 +90,6 @@ def evaluate_model(model, test_loader):
             
     logging.info(f"Final Test Accuracy: {100 * correct / total:.2f}%")
 
-# Запуск
 test_dataset = load_image_dataset(paths["test"], transform)
 
 if train_loader and test_dataset:
