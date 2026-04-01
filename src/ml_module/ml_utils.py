@@ -1,4 +1,5 @@
 from ..logger_module.logger import CustomLogger 
+from dotenv import load_dotenv
 import shutil
 import random
 import os
@@ -6,6 +7,23 @@ from pathlib import Path
 import numpy as np
 
 logger = CustomLogger("ML_utils_log")
+
+def get_dataset_paths():
+    """Loads and checks paths from environment"""
+    load_dotenv()
+
+    dataset_env = os.getenv("PREPARED_KNEE_DATASET")
+
+    if not dataset_env:
+        msg = "Dataset environment variables are not set properly."
+        logger.error(msg)
+        raise EnvironmentError(msg)
+        
+    dataset_path = Path(dataset_env)
+    return {
+        "train": dataset_path / "train",
+        "test": dataset_path / "test"
+    }
 
 def numpy_examinator(numpy_folder_root: str | Path):
     """Prints grouped shapes and relative paths of all .npy files in a folder tree"""
