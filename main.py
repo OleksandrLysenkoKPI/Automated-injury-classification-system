@@ -32,8 +32,8 @@ if __name__ == "__main__":
     elif choice_input == 3:
         numpy_examinator('data/prepared_data')
     elif choice_input == 4:
-        target_shape = (16, 128, 128)
-        load_dataset(target_shape)
+        target_shape = (32, 256, 256)
+        load_dataset(target_shape, batch_size=4)
     else:
         print("Exiting program...")
         sys.exit(0)

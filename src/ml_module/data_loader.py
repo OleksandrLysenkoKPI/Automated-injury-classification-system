@@ -15,7 +15,7 @@ class Knee3DPathologyDataset(Dataset):
         self.samples = []
         
         try:
-            self.classes = sorted([d.name for d in self.root_dir.iterdir() if d.is_dir])
+            self.classes = sorted([d.name for d in self.root_dir.iterdir() if d.is_dir()])
             self.class_to_idx = {cls_name: i for i, cls_name in enumerate(self.classes)}
         
             for class_name in self.classes:
@@ -25,9 +25,7 @@ class Knee3DPathologyDataset(Dataset):
                     self.samples.append((f, class_idx))
                     
             if not self.samples:
-                msg = f"No .npy files found in {root_dir}"
-                logger.error(msg)
-                raise FileNotFoundError(msg)
+                raise FileNotFoundError(f"No .npy files found in {self.root_dir}")
 
             logger.info(f"Dataset initialized: {len(self.samples)} samples, {len(self.classes)} classes.")
         except Exception as e:
@@ -54,7 +52,7 @@ class Knee3DPathologyDataset(Dataset):
             raise e
 
 
-def load_dataset(target_shape: tuple[int, int, int]):
+def load_dataset(target_shape: tuple[int, int, int], batch_size: int = 4):
     """Loads dataset and returns DataLoader objects"""
     try:
         paths = get_dataset_paths()
@@ -62,8 +60,8 @@ def load_dataset(target_shape: tuple[int, int, int]):
         train_dataset = Knee3DPathologyDataset(paths["train"], target_shape=target_shape)
         test_dataset = Knee3DPathologyDataset(paths["test"], target_shape=target_shape)
 
-        train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
-        test_loader = DataLoader(test_dataset, batch_size=4, shuffle=False)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
         logger.info(f"Classes found: {train_dataset.classes}")
         logger.info(f"Mapping: {train_dataset.class_to_idx}")
@@ -71,4 +69,5 @@ def load_dataset(target_shape: tuple[int, int, int]):
         logger.info("Dataset was loaded successfully")
         return train_loader, test_loader
     except Exception as e:
-        logger.error("Error during dataset loading: {e}")
+        logger.error(f"Error during dataset loading: {e}")
+        raise
