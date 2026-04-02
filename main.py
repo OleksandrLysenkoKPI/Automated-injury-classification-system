@@ -1,6 +1,7 @@
 from src.imaging.image_converter import DICOMProcessor
 from src.imaging.utils import verify_npy_conversion
 from src.ml_module.ml_utils import numpy_examinator
+from src.ml_module.data_loader import load_dataset
 from dotenv import load_dotenv
 import os
 import sys
@@ -21,6 +22,7 @@ if __name__ == "__main__":
     print("1 -- Convert DICOM files from dataset")
     print("2 -- Verify DICOM to NumPy file conversion")
     print("3 -- Examine NumPy file")
+    print("4 -- Load dataset")
     choice_input = int(input())
     
     if choice_input == 1:
@@ -29,6 +31,9 @@ if __name__ == "__main__":
         verify_npy_conversion(processor=processor, dicom_path=test_dicom_image, npy_path=test_numpy_image)
     elif choice_input == 3:
         numpy_examinator('data/prepared_data')
+    elif choice_input == 4:
+        target_shape = (16, 128, 128)
+        load_dataset(target_shape)
     else:
         print("Exiting program...")
         sys.exit(0)
