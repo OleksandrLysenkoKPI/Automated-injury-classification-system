@@ -1,12 +1,20 @@
 from ..logger_module.logger import CustomLogger 
 from dotenv import load_dotenv
+import torch
 import shutil
 import random
 import os
 from pathlib import Path
 import numpy as np
 
+
 logger = CustomLogger("ML_utils_log")
+
+def check_pytorch_install():
+    logger.info(f"PyTorch version: {torch.__version__}")
+    logger.info(f"CUDA available: {torch.cuda.is_available()}")
+    logger.info(f"CUDA version: {torch.version.cuda}")
+    logger.info(f"Number OF GPUs: {torch.cuda.device_count()}")
 
 def get_dataset_paths():
     """Loads and checks paths from environment"""
