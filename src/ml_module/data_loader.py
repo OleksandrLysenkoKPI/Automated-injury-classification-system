@@ -59,7 +59,8 @@ def load_dataset(target_shape: tuple[int, int, int], batch_size: int = 4):
 
         train_dataset = Knee3DPathologyDataset(paths["train"], target_shape=target_shape)
         test_dataset = Knee3DPathologyDataset(paths["test"], target_shape=target_shape)
-
+        num_classes = len(train_dataset.classes)
+        
         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
         test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
@@ -67,7 +68,7 @@ def load_dataset(target_shape: tuple[int, int, int], batch_size: int = 4):
         logger.info(f"Mapping: {train_dataset.class_to_idx}")
         
         logger.info("Dataset was loaded successfully")
-        return train_loader, test_loader
+        return train_loader, test_loader, num_classes
     except Exception as e:
         logger.error(f"Error during dataset loading: {e}")
         raise
