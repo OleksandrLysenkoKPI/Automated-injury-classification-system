@@ -4,25 +4,27 @@ from logging.handlers import RotatingFileHandler
 from datetime import datetime
 
 class CustomLogger:
-    def __init__(self, name: str, base_log_dir: str = "logs", create_folder: bool = True, use_timestamp_folder: bool = False):
+    def __init__(self, name: str, base_log_dir: str = "logs", create_folder: bool = True, timestamp_folder: bool = False):
         self.logger = logging.getLogger(name)
         
-        if not self.logger.hasHandlers():
-            if create_folder and use_timestamp_folder:
+        if self.logger.hasHandlers():
+            return
+        
+        log_path = Path(base_log_dir)
+        
+        if create_folder:
+            folder_name = name
+            if timestamp_folder:
                 timestamp = datetime.now().strftime("%d.%m.%y")
-                self.name_dir = Path(base_log_dir) / f"{timestamp}_{name}"
-                self.name_dir.mkdir(parents=True, exist_ok=True)
-                log_file = self.name_dir / f"{name}.log"
-            elif create_folder:
-                self.name_dir = Path(base_log_dir) / f"{name}"
-                self.name_dir.mkdir(parents=True, exist_ok=True)
-                log_file = self.name_dir / f"{name}.log"
-            else:
-                self.name_dir = Path(base_log_dir)
-                self.name_dir.mkdir(exist_ok=True)
-                log_file = self.name_dir / f"{name}.log"
+                folder_name = f"{timestamp}_{name}"
+            
+            log_path = log_path / folder_name
+        
+        self.name_dir = log_path
+        self.name_dir.mkdir(parents=True, exist_ok=True)
+        log_file = self.name_dir / f"{name}.log"
                 
-            self.setup_system_logger(log_file)
+        self.setup_system_logger(log_file)
     
     def setup_system_logger(self, log_file: Path):        
         self.logger.setLevel(logging.INFO)
