@@ -4,34 +4,43 @@ import torch.optim as optim
 import logging
 from data_loader import *
 
-# TODO: REWRITE
-
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+logger = CustomLogger("ML_module_log")
 
 class KneeNet(nn.Module):
-    def __init__(self):
+    def __init__(self, num_classes: int):
         super(KneeNet, self).__init__()
-        self.conv_layers = nn.Sequential(
-            nn.Conv2d(3, 16, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),
-            nn.Conv2d(16, 32, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2)
-        )
-        self.fc_layers = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(32 * 56 * 56, 128),
-            nn.ReLU(),
-            nn.Linear(128, 2) # 2 виходи: здорове/хворе
+        
+        self.conv_layer1 = self._conv_layer_set(1, 32)
+        self.conv_layer2 = self._conv_layer_set(32, 64)
+        
+        self.fc1 = nn.Linear(64 * 6 * 62 * 62, 128)
+        self.fc2 = nn.Linear(128, num_classes)
+        
+        self.relu = nn.LeakyReLU()
+        self.batch = nn.BatchNorm1d(128)
+        self.drop = nn.Dropout(p=0.15)
+    
+    def _conv_layer_set(self, in_c, out_c):
+        return nn.Sequential(
+            nn.Conv3d(in_c, out_c, kernel_size=3, padding=0),
+            nn.LeakyReLU(),
+            nn.MaxPool3d((2, 2, 2))
         )
     
-    def forward(self, x):
-        x = self.conv_layers(x)
-        x = self.fc_layers(x)
-        return x
+    def forward(self, x: torch.Tensor):
+        out: torch.Tensor = self.conv_layer1(x)
+        out = self.conv_layer2(out)
+        
+        out = out.view(out.size(0), -1)
+        
+        out = self.fc1(out)
+        out = self.relu(out)
+        out = self.batch(out)
+        out = self.drop(out)
+        out = self.fc2(out)
+        return out
 
-
+# TODO: REWRITE
 paths = get_dataset_paths()
 transform = get_transformations()
 
