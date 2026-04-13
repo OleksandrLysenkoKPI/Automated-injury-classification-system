@@ -2,7 +2,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import logging
-from data_loader import *
+from torch.utils.data import DataLoader
+from ..logger_module.logger import CustomLogger
+from data_loader import load_dataset
 
 logger = CustomLogger("ML_module_log")
 
@@ -40,23 +42,18 @@ class KneeNet(nn.Module):
         out = self.fc2(out)
         return out
 
-# TODO: REWRITE
-paths = get_dataset_paths()
-transform = get_transformations()
+train_dataset, test_dataset, num_classes = load_dataset(target_shape=(32, 256, 256))
 
-train_dataset = load_image_dataset(paths["train"], transform)
-train_loader = get_data_loader(train_dataset)
-
-model = KneeNet()
-
+model = KneeNet(num_classes=num_classes)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
 
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=0.001)
+optimizer = optim.Adam(model.parameters(), lr=0.0001)
 
-def train_model(model, train_loader, epochs=10):
-    log_section("Training Model")
+
+def train_model(model: KneeNet, train_loader: DataLoader, epochs: int =10):
+    logger.info("Start of model training")
     model.train()
     for epoch in range(epochs):
         running_loss = 0.0
@@ -64,26 +61,28 @@ def train_model(model, train_loader, epochs=10):
         total = 0
 
         for images, labels in train_loader:
-            # Групування 0, 1 --> Healthy (0), 2,3,4 --> (Ill)
-            binary_labels = (labels >=2).long().to(device)
-            images = images.to(device)
+            images: torch.Tensor
+            labels: torch.Tensor
+            
+            images, labels = images.to(device), labels.to(device)
             
             optimizer.zero_grad()
-            outputs = model(images)
-            loss = criterion(outputs, binary_labels)
+            outputs = model(images) # [Batch, 6]
+            loss: torch.Tensor = criterion(outputs, labels) # labels in range [0, 5]
             loss.backward()
             optimizer.step()
             
             running_loss += loss.item()
             _, predicted = torch.max(outputs.data, 1)
-            total += binary_labels.size(0)
-            correct += (predicted == binary_labels).sum().item()
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
         
         accuracy = 100 * correct / total
-        logging.info(f"Epoch [{epoch+1}/{epochs}] | Loss: {running_loss/len(train_loader):.4f} | Acc: {accuracy:.2f}%")
+        logger.info(f"Epoch [{epoch+1}/{epochs}] | Loss: {running_loss/len(train_loader):.4f} | Acc: {accuracy:.2f}%")
 
-def evaluate_model(model, test_loader):
-    log_section("Evaluating Model")
+# TODO: REWRITE with sklearn metrics
+def evaluate_model(model: KneeNet, test_loader: DataLoader):
+    logger.info("Start of model evaluation")
     model.eval()
     correct = 0
     total = 0
