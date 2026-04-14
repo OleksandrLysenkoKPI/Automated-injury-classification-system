@@ -1,10 +1,12 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import numpy as np
 import logging
 from torch.utils.data import DataLoader
 from ..logger_module.logger import CustomLogger
 from data_loader import load_dataset
+from sklearn.metrics import classification_report
 
 logger = CustomLogger("ML_module_log")
 
@@ -42,9 +44,9 @@ class KneeNet(nn.Module):
         out = self.fc2(out)
         return out
 
-train_dataset, test_dataset, num_classes = load_dataset(target_shape=(32, 256, 256))
+train_dataset, test_dataset, classes = load_dataset(target_shape=(32, 256, 256))
 
-model = KneeNet(num_classes=num_classes)
+model = KneeNet(num_classes=len(classes))
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
 
@@ -80,40 +82,54 @@ def train_model(model: KneeNet, train_loader: DataLoader, epochs: int =10):
         accuracy = 100 * correct / total
         logger.info(f"Epoch [{epoch+1}/{epochs}] | Loss: {running_loss/len(train_loader):.4f} | Acc: {accuracy:.2f}%")
 
-# TODO: REWRITE with sklearn metrics
-def evaluate_model(model: KneeNet, test_loader: DataLoader):
+def evaluate_model(model: KneeNet, test_loader: DataLoader, class_names: list[str]):
     logger.info("Start of model evaluation")
     model.eval()
-    correct = 0
-    total = 0
+   
+    all_predictions = []
+    all_labels = []
+   
     with torch.no_grad(): # Вимкнення розрахунку градієнтів
         for images, labels in test_loader:
-            binary_labels = (labels >= 2).long().to(device)
-            images = images.to(device)
+            images: torch.Tensor
+            labels: torch.Tensor
+            
+            images, labels = images.to(device), labels.to(device)
             
             outputs = model(images)
-            _, predicted = torch.max(outputs.data, 1)
-            total += binary_labels.size(0)
-            correct += (predicted == binary_labels).sum().item()
+            _, predicted = torch.max(outputs, 1)
             
-    logging.info(f"Final Test Accuracy: {100 * correct / total:.2f}%")
-
-test_dataset = load_image_dataset(paths["test"], transform)
-
-if train_loader and test_dataset:
-    test_loader = get_data_loader(test_dataset, shuffle=False)
+            all_predictions.extend(predicted.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy())
     
-    if test_loader:
-        logging.info("Starting training process...")
-        train_model(model, train_loader, epochs=5)
+    report = classification_report(
+        all_labels, 
+        all_predictions, 
+        target_names=class_names,
+        zero_division=0
+    )
+    logging.info(f"{report}")
+    
+    accuracy: float = (np.array(all_predictions) == np.array(all_labels)).mean() * 100
+    logging.info(f"Overall Test Accuracy: {accuracy:.2f}%")
+
+
+# TODO: Write function for running model
+
+# if train_loader and test_dataset:
+#     test_loader = get_data_loader(test_dataset, shuffle=False)
+    
+#     if test_loader:
+#         logging.info("Starting training process...")
+#         train_model(model, train_loader, epochs=5)
         
-        logging.info("Starting evaluation...")
-        evaluate_model(model, test_loader)
+#         logging.info("Starting evaluation...")
+#         evaluate_model(model, test_loader)
         
-        file_name = "knee_model_refactor_test"
+#         file_name = "knee_model_refactor_test"
         
-        torch.save(model.state_dict(), f"{file_name}.pth")
-        logging.info(f"Model weights saved to {file_name}.pth")
-else:
-    logging.error("Failed to initialize loaders. Check your dataset paths.")
+#         torch.save(model.state_dict(), f"{file_name}.pth")
+#         logging.info(f"Model weights saved to {file_name}.pth")
+# else:
+#     logging.error("Failed to initialize loaders. Check your dataset paths.")
         
