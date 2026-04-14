@@ -53,7 +53,7 @@ def train_model(
     criterion: _Loss,
     optimizer: Optimizer,
     device: torch.device,
-    epochs: int =10
+    epochs: int = 10
 ):
     logger.info(f"Start of model training on device: {device}")
     model.train()
@@ -119,8 +119,21 @@ def evaluate_model(
 
 
 # TODO: Write function for running model
-def start_model_pipeline():
-    train_dataset, test_dataset, classes = load_dataset(target_shape=(32, 256, 256))
+def start_model_pipeline(
+    epochs: int = 5, 
+    batch_size: int = 4, 
+    target_shape: tuple[int, int, int] = (32, 256, 256), 
+    save_file_name: str = "knee_3d_pathology_model"
+):
+    """Starts model training and evaluation pipeline. Saves model at the end.
+
+    Args:
+        epochs (int, optional): _description_. Defaults to 5.
+        batch_size (int, optional): _description_. Defaults to 4.
+        target_shape (tuple[int, int, int], optional): _description_. Defaults to (32, 256, 256).
+        save_file_name (str, optional): _description_. Defaults to "knee_3d_pathology_model".
+    """
+    train_dataset, test_dataset, classes = load_dataset(target_shape=target_shape, batch_size=batch_size)
 
     model = KneeNet(num_classes=len(classes))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -129,6 +142,14 @@ def start_model_pipeline():
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.0001)
 
+    try:
+        train_model(model, train_dataset, criterion, optimizer, device, epochs=epochs)
+        evaluate_model(model, test_dataset, device, classes)
+        
+        torch.save(model.state_dict(), f"{save_file_name}.pth")
+        logger.info(f"Model saved to {save_file_name}.pth")
+    except Exception as e:
+        logger.error(f"Pipeline failed: {e}")
 
 # if train_loader and test_dataset:
 #     test_loader = get_data_loader(test_dataset, shuffle=False)
