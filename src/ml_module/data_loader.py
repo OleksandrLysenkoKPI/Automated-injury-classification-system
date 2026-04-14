@@ -53,7 +53,7 @@ class Knee3DPathologyDataset(Dataset):
 
 
 def load_dataset(target_shape: tuple[int, int, int], batch_size: int = 4):
-    """Loads dataset and returns DataLoader objects"""
+    """Loads dataset and returns DataLoader objects with number of classes in a dataset"""
     try:
         paths = get_dataset_paths()
 
