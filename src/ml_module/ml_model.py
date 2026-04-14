@@ -4,6 +4,8 @@ import torch.optim as optim
 import numpy as np
 import logging
 from torch.utils.data import DataLoader
+from torch.nn.modules.loss import _Loss
+from torch.optim import Optimizer
 from ..logger_module.logger import CustomLogger
 from data_loader import load_dataset
 from sklearn.metrics import classification_report
@@ -44,18 +46,16 @@ class KneeNet(nn.Module):
         out = self.fc2(out)
         return out
 
-train_dataset, test_dataset, classes = load_dataset(target_shape=(32, 256, 256))
 
-model = KneeNet(num_classes=len(classes))
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model.to(device)
-
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=0.0001)
-
-
-def train_model(model: KneeNet, train_loader: DataLoader, epochs: int =10):
-    logger.info("Start of model training")
+def train_model(
+    model: nn.Module,
+    train_loader: DataLoader,
+    criterion: _Loss,
+    optimizer: Optimizer,
+    device: torch.device,
+    epochs: int =10
+):
+    logger.info(f"Start of model training on device: {device}")
     model.train()
     for epoch in range(epochs):
         running_loss = 0.0
@@ -82,14 +82,17 @@ def train_model(model: KneeNet, train_loader: DataLoader, epochs: int =10):
         accuracy = 100 * correct / total
         logger.info(f"Epoch [{epoch+1}/{epochs}] | Loss: {running_loss/len(train_loader):.4f} | Acc: {accuracy:.2f}%")
 
-def evaluate_model(model: KneeNet, test_loader: DataLoader, class_names: list[str]):
-    logger.info("Start of model evaluation")
+def evaluate_model(
+    model: KneeNet,
+    test_loader: DataLoader,
+    device: torch.device,
+    class_names: list[str]
+):
+    logger.info("Starting model evaluation")
     model.eval()
+    all_predictions, all_labels = [], []
    
-    all_predictions = []
-    all_labels = []
-   
-    with torch.no_grad(): # Вимкнення розрахунку градієнтів
+    with torch.no_grad():
         for images, labels in test_loader:
             images: torch.Tensor
             labels: torch.Tensor
@@ -108,13 +111,24 @@ def evaluate_model(model: KneeNet, test_loader: DataLoader, class_names: list[st
         target_names=class_names,
         zero_division=0
     )
-    logging.info(f"{report}")
+    logger.info(f"{report}")
     
     accuracy: float = (np.array(all_predictions) == np.array(all_labels)).mean() * 100
-    logging.info(f"Overall Test Accuracy: {accuracy:.2f}%")
+    logger.info(f"Overall Test Accuracy: {accuracy:.2f}%")
+    logger.info("Evaluation complete.")
 
 
 # TODO: Write function for running model
+def start_model_pipeline():
+    train_dataset, test_dataset, classes = load_dataset(target_shape=(32, 256, 256))
+
+    model = KneeNet(num_classes=len(classes))
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=0.0001)
+
 
 # if train_loader and test_dataset:
 #     test_loader = get_data_loader(test_dataset, shuffle=False)
