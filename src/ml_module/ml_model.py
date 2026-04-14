@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from torch.nn.modules.loss import _Loss
 from torch.optim import Optimizer
 from ..logger_module.logger import CustomLogger
-from data_loader import load_dataset
+from .data_loader import load_dataset
 from sklearn.metrics import classification_report
 
 logger = CustomLogger("ML_module_log")
