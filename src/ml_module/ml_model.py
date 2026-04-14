@@ -16,10 +16,13 @@ class KneeNet(nn.Module):
     def __init__(self, num_classes: int):
         super(KneeNet, self).__init__()
         
-        self.conv_layer1 = self._conv_layer_set(1, 32)
-        self.conv_layer2 = self._conv_layer_set(32, 64)
+        self.conv_layer1 = self._conv_layer_set(1, 16)
+        self.conv_layer2 = self._conv_layer_set(16, 32)
+        self.conv_layer3 = self._conv_layer_set(32, 64)
         
-        self.fc1 = nn.Linear(64 * 6 * 62 * 62, 128)
+        self.gap = nn.AdaptiveAvgPool3d((1, 1, 1)) # Compress any volume to (1, 1, 1)
+        
+        self.fc1 = nn.Linear(64, 128) # input is always 64 now
         self.fc2 = nn.Linear(128, num_classes)
         
         self.relu = nn.LeakyReLU()
@@ -36,8 +39,10 @@ class KneeNet(nn.Module):
     def forward(self, x: torch.Tensor):
         out: torch.Tensor = self.conv_layer1(x)
         out = self.conv_layer2(out)
+        out = self.conv_layer3(out)
         
-        out = out.view(out.size(0), -1)
+        out = self.gap(out) # Form becomes [Batch, 64, 1, 1, 1]
+        out = out.view(out.size(0), -1) # Form [Batch, 64]
         
         out = self.fc1(out)
         out = self.relu(out)
