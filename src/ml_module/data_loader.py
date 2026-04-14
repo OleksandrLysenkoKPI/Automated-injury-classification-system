@@ -53,22 +53,23 @@ class Knee3DPathologyDataset(Dataset):
 
 
 def load_dataset(target_shape: tuple[int, int, int], batch_size: int = 4):
-    """Loads dataset and returns DataLoader objects with number of classes in a dataset"""
+    """Loads dataset and returns DataLoader objects with list of found classes"""
     try:
         paths = get_dataset_paths()
 
         train_dataset = Knee3DPathologyDataset(paths["train"], target_shape=target_shape)
         test_dataset = Knee3DPathologyDataset(paths["test"], target_shape=target_shape)
-        num_classes = len(train_dataset.classes)
+        
+        class_names = train_dataset.classes
         
         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
         test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
-        logger.info(f"Classes found: {train_dataset.classes}")
+        logger.info(f"Loaded {len(class_names)} classes: {class_names}")
         logger.info(f"Mapping: {train_dataset.class_to_idx}")
         
         logger.info("Dataset was loaded successfully")
-        return train_loader, test_loader, num_classes
+        return train_loader, test_loader, class_names
     except Exception as e:
         logger.error(f"Error during dataset loading: {e}")
         raise
