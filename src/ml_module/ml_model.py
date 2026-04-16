@@ -24,7 +24,7 @@ class KneeNet(nn.Module):
         
         self.relu = nn.LeakyReLU()
         self.batch = nn.BatchNorm1d(128)
-        self.drop = nn.Dropout(p=0.15)
+        self.drop = nn.Dropout(p=0.3)
         self.gap = nn.AdaptiveAvgPool3d((1, 1, 1))
     
     def _conv_layer_set(self, in_c, out_c):
@@ -120,7 +120,6 @@ def evaluate_model(
     logger.info("Evaluation complete.")
 
 
-# TODO: Write function for running model
 def start_model_pipeline(
     epochs: int = 5, 
     batch_size: int = 4, 
@@ -142,7 +141,7 @@ def start_model_pipeline(
     model.to(device)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.0001)
+    optimizer = optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-2)
 
     try:
         train_model(model, train_dataset, criterion, optimizer, device, epochs=epochs)
