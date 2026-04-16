@@ -19,12 +19,13 @@ class KneeNet(nn.Module):
         self.conv_layer1 = self._conv_layer_set(1, 32)
         self.conv_layer2 = self._conv_layer_set(32, 64)
         
-        self.fc1 = nn.Linear(64 * 6 * 62 * 62, 128)
+        self.fc1 = nn.Linear(64, 128) # After GAP will remain only 64 channels 
         self.fc2 = nn.Linear(128, num_classes)
         
         self.relu = nn.LeakyReLU()
         self.batch = nn.BatchNorm1d(128)
         self.drop = nn.Dropout(p=0.15)
+        self.gap = nn.AdaptiveAvgPool3d((1, 1, 1))
     
     def _conv_layer_set(self, in_c, out_c):
         return nn.Sequential(
@@ -37,6 +38,7 @@ class KneeNet(nn.Module):
         out: torch.Tensor = self.conv_layer1(x)
         out = self.conv_layer2(out)
         
+        out = self.gap(out)
         out = out.view(out.size(0), -1)
         
         out = self.fc1(out)
