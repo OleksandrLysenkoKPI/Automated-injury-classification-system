@@ -4,14 +4,16 @@ from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import torch
 import torch.nn.functional as F
+import random
 from pathlib import Path
 
 logger = CustomLogger("DataLoader_log")
 
 class Knee3DPathologyDataset(Dataset):
-    def __init__(self, root_dir: str | Path, target_shape: tuple[int, int, int]=(16, 128, 128)):
+    def __init__(self, root_dir: str | Path, target_shape: tuple[int, int, int]=(16, 128, 128), is_train: bool = False):
         self.root_dir = Path(root_dir)
         self.target_shape = target_shape
+        self.is_train = is_train
         self.samples = []
         
         try:
@@ -42,9 +44,23 @@ class Knee3DPathologyDataset(Dataset):
             data = np.load(file_path)
             tensor = torch.from_numpy(data).float()
             
-            tensor = tensor.unsqueeze(0).unsqueeze(0)
+            tensor = tensor.unsqueeze(0) # [D, H, W] -> [1, D, H,W]
+            
+            if self.is_train:
+                if random.random() > 0.5:
+                    tensor = torch.flip(tensor, dims=[-1])
+                
+                if random.random() > 0.5:
+                    k = random.choice([1, 2, 3])
+                    tensor = torch.rot90(tensor, k, dims=[-2, -1])
+                    
+                if random.random() > 0.5:
+                    noise = torch.rand_like(tensor) * 0.01
+                    tensor += noise
+            
+            tensor = tensor.unsqueeze(0) # [B, C, D, H, W]
             tensor = F.interpolate(tensor, size=self.target_shape, mode='trilinear', align_corners=False)
-            tensor = tensor.squeeze(0)
+            tensor = tensor.squeeze(0) # [C, D, H, W]
             
             return tensor, label
         except Exception as e:
@@ -57,8 +73,8 @@ def load_dataset(target_shape: tuple[int, int, int], batch_size: int = 4):
     try:
         paths = get_dataset_paths()
 
-        train_dataset = Knee3DPathologyDataset(paths["train"], target_shape=target_shape)
-        test_dataset = Knee3DPathologyDataset(paths["test"], target_shape=target_shape)
+        train_dataset = Knee3DPathologyDataset(paths["train"], target_shape=target_shape, is_train=True)
+        test_dataset = Knee3DPathologyDataset(paths["test"], target_shape=target_shape, is_train=False)
         
         class_names = train_dataset.classes
         
