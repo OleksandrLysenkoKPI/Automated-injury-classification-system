@@ -46,6 +46,7 @@ class Knee3DPathologyDataset(Dataset):
             
             tensor = tensor.unsqueeze(0) # [D, H, W] -> [1, D, H,W]
             
+            # Data augmentation
             if self.is_train:
                 if random.random() > 0.5:
                     tensor = torch.flip(tensor, dims=[-1])

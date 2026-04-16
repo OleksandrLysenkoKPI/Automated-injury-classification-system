@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
-import logging
 from torch.utils.data import DataLoader
 from torch.nn.modules.loss import _Loss
 from torch.optim import Optimizer
@@ -134,12 +133,12 @@ def start_model_pipeline(
     """Starts model training and evaluation pipeline. Saves model at the end.
 
     Args:
-        epochs (int, optional): _description_. Defaults to 5.
-        batch_size (int, optional): _description_. Defaults to 4.
-        target_shape (tuple[int, int, int], optional): _description_. Defaults to (32, 256, 256).
-        save_file_name (str, optional): _description_. Defaults to "knee_3d_pathology_model".
+        epochs (int, optional): Defaults to 5.
+        batch_size (int, optional): Defaults to 4.
+        target_shape (tuple[int, int, int], optional): Defaults to (32, 256, 256).
+        save_file_name (str, optional): Defaults to "knee_3d_pathology_model".
     """
-    train_dataset, test_dataset, classes = load_dataset(target_shape=target_shape, batch_size=batch_size)
+    train_loader, test_loader, classes = load_dataset(target_shape=target_shape, batch_size=batch_size)
 
     model = KneeNet(num_classes=len(classes))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -150,28 +149,11 @@ def start_model_pipeline(
 
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=epochs, eta_min=1e-6)
     try:
-        train_model(model, train_dataset, criterion, optimizer, scheduler, device, epochs=epochs)
-        evaluate_model(model, test_dataset, device, classes)
+        train_model(model, train_loader, criterion, optimizer, scheduler, device, epochs=epochs)
+        evaluate_model(model, test_loader, device, classes)
         
         torch.save(model.state_dict(), f"{save_file_name}.pth")
         logger.info(f"Model saved to {save_file_name}.pth")
     except Exception as e:
         logger.error(f"Pipeline failed: {e}")
-
-# if train_loader and test_dataset:
-#     test_loader = get_data_loader(test_dataset, shuffle=False)
     
-#     if test_loader:
-#         logging.info("Starting training process...")
-#         train_model(model, train_loader, epochs=5)
-        
-#         logging.info("Starting evaluation...")
-#         evaluate_model(model, test_loader)
-        
-#         file_name = "knee_model_refactor_test"
-        
-#         torch.save(model.state_dict(), f"{file_name}.pth")
-#         logging.info(f"Model weights saved to {file_name}.pth")
-# else:
-#     logging.error("Failed to initialize loaders. Check your dataset paths.")
-        
