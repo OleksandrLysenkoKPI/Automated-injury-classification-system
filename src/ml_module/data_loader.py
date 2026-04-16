@@ -37,6 +37,21 @@ class Knee3DPathologyDataset(Dataset):
     def __len__(self):
         return len(self.samples)
     
+    def _apply_augmentations(self, tensor: torch.Tensor) -> torch.Tensor:
+        """Private method for 3D tensor augmentation"""
+        if random.random() > 0.5:
+            tensor = torch.flip(tensor, dims=[-1])
+                
+        if random.random() > 0.5:
+            k = random.choice([1, 2, 3])
+            tensor = torch.rot90(tensor, k, dims=[-2, -1])
+            
+        if random.random() > 0.5:
+            noise = torch.rand_like(tensor) * 0.01
+            tensor += noise
+
+        return tensor
+    
     def __getitem__(self, index):
         file_path, label = self.samples[index]
         
@@ -48,16 +63,7 @@ class Knee3DPathologyDataset(Dataset):
             
             # Data augmentation
             if self.is_train:
-                if random.random() > 0.5:
-                    tensor = torch.flip(tensor, dims=[-1])
-                
-                if random.random() > 0.5:
-                    k = random.choice([1, 2, 3])
-                    tensor = torch.rot90(tensor, k, dims=[-2, -1])
-                    
-                if random.random() > 0.5:
-                    noise = torch.rand_like(tensor) * 0.01
-                    tensor += noise
+                tensor = self._apply_augmentations(tensor)
             
             tensor = tensor.unsqueeze(0) # [B, C, D, H, W]
             tensor = F.interpolate(tensor, size=self.target_shape, mode='trilinear', align_corners=False)
