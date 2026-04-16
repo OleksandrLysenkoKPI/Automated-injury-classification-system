@@ -6,6 +6,7 @@ import logging
 from torch.utils.data import DataLoader
 from torch.nn.modules.loss import _Loss
 from torch.optim import Optimizer
+from torch.optim.lr_scheduler import LRScheduler
 from ..logger_module.logger import CustomLogger
 from .data_loader import load_dataset
 from sklearn.metrics import classification_report
@@ -54,6 +55,7 @@ def train_model(
     train_loader: DataLoader,
     criterion: _Loss,
     optimizer: Optimizer,
+    scheduler: LRScheduler,
     device: torch.device,
     epochs: int = 10
 ):
@@ -81,8 +83,11 @@ def train_model(
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
         
+        scheduler.step()
+        
+        current_lr = optimizer.param_groups[0]['lr']
         accuracy = 100 * correct / total
-        logger.info(f"Epoch [{epoch+1}/{epochs}] | Loss: {running_loss/len(train_loader):.4f} | Acc: {accuracy:.2f}%")
+        logger.info(f"Epoch [{epoch+1}/{epochs}] | Loss: {running_loss/len(train_loader):.4f} | Acc: {accuracy:.2f}% | LR: {current_lr:.6f}")
 
 def evaluate_model(
     model: KneeNet,
@@ -143,8 +148,9 @@ def start_model_pipeline(
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-2)
 
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=epochs, eta_min=1e-6)
     try:
-        train_model(model, train_dataset, criterion, optimizer, device, epochs=epochs)
+        train_model(model, train_dataset, criterion, optimizer, scheduler, device, epochs=epochs)
         evaluate_model(model, test_dataset, device, classes)
         
         torch.save(model.state_dict(), f"{save_file_name}.pth")
