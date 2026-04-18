@@ -40,7 +40,7 @@ if __name__ == "__main__":
         target_shape = (32, 256, 256)
         load_dataset(target_shape, batch_size=4, load_augmented=True)
     elif choice_input == 6:
-        start_model_pipeline(target_shape=(32, 256, 256), save_file_name="knee_3d_pathology_model", use_augmented=True)
+        start_model_pipeline(epochs=50, target_shape=(32, 256, 256), save_file_name="knee_3d_pathology_model", use_augmented=True)
     else:
         print("Exiting program...")
         sys.exit(0)
