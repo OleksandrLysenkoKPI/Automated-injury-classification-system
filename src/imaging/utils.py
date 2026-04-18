@@ -24,49 +24,52 @@ def augment_and_save_dataset(root_path: str | Path):
         logger.info(f"Processing class: {class_name}. Found {len(npy_files)} files")
         
         for file_name in npy_files:
-            file_path = Path(root) / file_name
-            data = np.load(file_path)
-            base_name = Path(file_name).stem
+            try:
+                file_path = Path(root) / file_name
+                data = np.load(file_path)
+                base_name = Path(file_name).stem
 
-            noise_standard = 0.01 * (data.max() - data.min())
-            
-            # --- Basic ---
-            # 1. Original
-            np.save(target_folder / f"{base_name}_orig.npy", data)
-            
-            # 2. Flip
-            flipped = np.flip(data, axis=-1)
-            np.save(target_folder / f"{base_name}_flipped.npy", flipped)
-            
-            # 3. 90 deg Rotation
-            rotated = np.rot90(data, k=1, axes=(-2, -1))
-            np.save(target_folder / f"{base_name}_rotated.npy", rotated)
-            
-            # 4. Noise
-            noise = np.random.normal(0, noise_standard, data.shape).astype(np.float32)
-            noised = data + noise
-            np.save(target_folder / f"{base_name}_noised.npy", noised)
-            
-            # --- Combinations ---
-            # 1. Flip + Rotate
-            f_r = np.rot90(flipped, k=1, axes=(-2, -1))
-            np.save(target_folder / f"{base_name}_flip_rotation.npy", f_r)
-            
-            # 2. Flip + Noise
-            f_n = flipped + np.random.normal(0, noise_standard, data.shape).astype(np.float32)
-            np.save(target_folder / f"{base_name}_noise_flip.npy", f_n)
-            
-            # 3. Rotate + Noise
-            r_n = rotated + np.random.normal(0, noise_standard, data.shape).astype(np.float32)
-            np.save(target_folder / f"{base_name}_noise_rotation.npy", r_n)
-            
-            # 4. All
-            all_aug = f_r + np.random.normal(0, noise_standard, data.shape).astype(np.float32)
-            np.save(target_folder / f"{base_name}_all.npy", all_aug)
-    
+                noise_standard = 0.01 * (data.max() - data.min())
+                
+                # --- Basic ---
+                # 1. Original
+                np.save(target_folder / f"{base_name}_orig.npy", data)
+                
+                # 2. Flip
+                flipped = np.flip(data, axis=-1)
+                np.save(target_folder / f"{base_name}_flipped.npy", flipped)
+                
+                # 3. 90 deg Rotation
+                rotated = np.rot90(data, k=1, axes=(-2, -1))
+                np.save(target_folder / f"{base_name}_rotated.npy", rotated)
+                
+                # 4. Noise
+                noise = np.random.normal(0, noise_standard, data.shape).astype(np.float32)
+                noised = data + noise
+                np.save(target_folder / f"{base_name}_noised.npy", noised)
+                
+                # --- Combinations ---
+                # 1. Flip + Rotate
+                f_r = np.rot90(flipped, k=1, axes=(-2, -1))
+                np.save(target_folder / f"{base_name}_flip_rotation.npy", f_r)
+                
+                # 2. Flip + Noise
+                f_n = flipped + np.random.normal(0, noise_standard, data.shape).astype(np.float32)
+                np.save(target_folder / f"{base_name}_noise_flip.npy", f_n)
+                
+                # 3. Rotate + Noise
+                r_n = rotated + np.random.normal(0, noise_standard, data.shape).astype(np.float32)
+                np.save(target_folder / f"{base_name}_noise_rotation.npy", r_n)
+                
+                # 4. All
+                all_aug = f_r + np.random.normal(0, noise_standard, data.shape).astype(np.float32)
+                np.save(target_folder / f"{base_name}_all.npy", all_aug)
+            except Exception as e:
+                logger.error(f"Failed to process {file_path.name}: {e}")
+                continue
+               
     logger.info(f"Augmentation finished. New augmented dataset location: {output_base}")
             
-
 
 def verify_npy_conversion(processor, dicom_path, npy_path):
     """Compares original DICOM with loaded NumPy file"""
