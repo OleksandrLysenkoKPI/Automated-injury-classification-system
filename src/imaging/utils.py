@@ -6,6 +6,10 @@ from ..logger_module.logger import CustomLogger
 
 logger = CustomLogger("Imaging_utils_log")
 
+def add_noise(data: np.ndarray, standard: float) -> np.ndarray:
+    noise = np.random.normal(0, standard, data.shape).astype(np.float32)
+    return data + noise
+
 def augment_and_save_dataset(root_path: str | Path):
     root_path = Path(root_path)
     output_base = root_path.parent / "train_augmented"
@@ -26,7 +30,7 @@ def augment_and_save_dataset(root_path: str | Path):
         for file_name in npy_files:
             try:
                 file_path = Path(root) / file_name
-                data = np.load(file_path)
+                data: np.ndarray = np.load(file_path)
                 base_name = Path(file_name).stem
 
                 noise_standard = 0.01 * (data.max() - data.min())
@@ -44,9 +48,7 @@ def augment_and_save_dataset(root_path: str | Path):
                 np.save(target_folder / f"{base_name}_rotated.npy", rotated)
                 
                 # 4. Noise
-                noise = np.random.normal(0, noise_standard, data.shape).astype(np.float32)
-                noised = data + noise
-                np.save(target_folder / f"{base_name}_noised.npy", noised)
+                np.save(target_folder / f"{base_name}_noised.npy", add_noise(data, noise_standard))
                 
                 # --- Combinations ---
                 # 1. Flip + Rotate
@@ -54,16 +56,13 @@ def augment_and_save_dataset(root_path: str | Path):
                 np.save(target_folder / f"{base_name}_flip_rotation.npy", f_r)
                 
                 # 2. Flip + Noise
-                f_n = flipped + np.random.normal(0, noise_standard, data.shape).astype(np.float32)
-                np.save(target_folder / f"{base_name}_noise_flip.npy", f_n)
+                np.save(target_folder / f"{base_name}_noise_flip.npy", add_noise(flipped, noise_standard))
                 
                 # 3. Rotate + Noise
-                r_n = rotated + np.random.normal(0, noise_standard, data.shape).astype(np.float32)
-                np.save(target_folder / f"{base_name}_noise_rotation.npy", r_n)
+                np.save(target_folder / f"{base_name}_noise_rotation.npy", add_noise(rotated, noise_standard))
                 
                 # 4. All
-                all_aug = f_r + np.random.normal(0, noise_standard, data.shape).astype(np.float32)
-                np.save(target_folder / f"{base_name}_all.npy", all_aug)
+                np.save(target_folder / f"{base_name}_all.npy", add_noise(f_r, noise_standard))
             except Exception as e:
                 logger.error(f"Failed to process {file_path.name}: {e}")
                 continue
