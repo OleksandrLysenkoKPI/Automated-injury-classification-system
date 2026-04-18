@@ -128,7 +128,8 @@ def start_model_pipeline(
     epochs: int = 5, 
     batch_size: int = 4, 
     target_shape: tuple[int, int, int] = (32, 256, 256), 
-    save_file_name: str = "knee_3d_pathology_model"
+    save_file_name: str = "knee_3d_pathology_model",
+    use_augmented: bool = False
 ):
     """Starts model training and evaluation pipeline. Saves model at the end.
 
@@ -138,7 +139,7 @@ def start_model_pipeline(
         target_shape (tuple[int, int, int], optional): Defaults to (32, 256, 256).
         save_file_name (str, optional): Defaults to "knee_3d_pathology_model".
     """
-    train_loader, test_loader, classes = load_dataset(target_shape=target_shape, batch_size=batch_size)
+    train_loader, test_loader, classes = load_dataset(target_shape=target_shape, batch_size=batch_size, load_augmented=use_augmented)
 
     model = KneeNet(num_classes=len(classes))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

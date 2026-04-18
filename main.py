@@ -1,5 +1,5 @@
 from src.imaging.image_converter import DICOMProcessor
-from src.imaging.utils import verify_npy_conversion
+from src.imaging.utils import verify_npy_conversion, augment_and_save_dataset
 from src.ml_module.ml_utils import numpy_examinator
 from src.ml_module.data_loader import load_dataset
 from src.ml_module.ml_model import start_model_pipeline
@@ -23,8 +23,9 @@ if __name__ == "__main__":
     print("1 -- Convert DICOM files from dataset")
     print("2 -- Verify DICOM to NumPy file conversion")
     print("3 -- Examine NumPy file")
-    print("4 -- Load dataset")
-    print("5 -- Start model pipeline")
+    print("4 -- Augment NumPy dataset")
+    print("5 -- Load dataset")
+    print("6 -- Start model pipeline")
     choice_input = int(input())
     
     if choice_input == 1:
@@ -34,10 +35,12 @@ if __name__ == "__main__":
     elif choice_input == 3:
         numpy_examinator('data/prepared_data')
     elif choice_input == 4:
-        target_shape = (32, 256, 256)
-        load_dataset(target_shape, batch_size=4)
+        augment_and_save_dataset('data/prepared_data/train')
     elif choice_input == 5:
-        start_model_pipeline(target_shape=(32, 256, 256), save_file_name="knee_3d_pathology_model")
+        target_shape = (32, 256, 256)
+        load_dataset(target_shape, batch_size=4, load_augmented=True)
+    elif choice_input == 6:
+        start_model_pipeline(target_shape=(32, 256, 256), save_file_name="knee_3d_pathology_model", use_augmented=True)
     else:
         print("Exiting program...")
         sys.exit(0)

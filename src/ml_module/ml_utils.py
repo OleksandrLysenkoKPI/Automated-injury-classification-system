@@ -30,6 +30,7 @@ def get_dataset_paths():
     dataset_path = Path(dataset_env)
     return {
         "train": dataset_path / "train",
+        "train_augmented": dataset_path / "train_augmented",
         "test": dataset_path / "test"
     }
 
