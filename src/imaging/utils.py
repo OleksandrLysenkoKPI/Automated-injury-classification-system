@@ -1,9 +1,33 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+from pathlib import Path
 from ..logger_module.logger import CustomLogger
 
 logger = CustomLogger("Imaging_utils_log")
+
+def augment_and_save_dataset(root_path: str | Path):
+    root_path = Path(root_path)
+    output_base = root_path.parent / "train_augmented"
+    output_base.mkdir(parents=True, exist_ok=True)
+    
+    for root, dirs, files in os.walk(root_path):
+        npy_files = [f for f in files if f.endswith('.npy')]
+            
+        if not npy_files:
+            continue
+        
+        class_name = Path(root).name
+        target_folder = output_base / class_name
+        target_folder.mkdir(exist_ok=True)
+        
+        logger.info(f"Processing class: {class_name}. Found {len(npy_files)} files")
+        
+        for file_name in npy_files:
+            file_path = Path(root) / file_name
+            data = np.load(file_path)
+            base_name = Path(file_name).stem
+
 
 def verify_npy_conversion(processor, dicom_path, npy_path):
     """Compares original DICOM with loaded NumPy file"""
