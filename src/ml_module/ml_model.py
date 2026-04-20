@@ -163,8 +163,8 @@ def start_model_pipeline(
     model.to(device)
 
     weights = torch.tensor([1.5, 2.5, 1.5, 1.5, 0.8, 1.2]).to(device)
-    criterion = nn.CrossEntropyLoss(weight=weights)
-    optimizer = optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-3)
+    criterion = nn.CrossEntropyLoss(weight=weights, label_smoothing=0.1)
+    optimizer = optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.05)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=epochs, eta_min=1e-6)
     
     try:
