@@ -6,6 +6,8 @@ from torch.utils.data import DataLoader
 from torch.nn.modules.loss import _Loss
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
+from torch.amp.autocast_mode import autocast
+from torch.amp.grad_scaler import GradScaler
 from ..logger_module.logger import CustomLogger
 from .data_loader import load_dataset
 from sklearn.metrics import classification_report
@@ -29,7 +31,7 @@ class KneeNet(nn.Module):
     
     def _conv_layer_set(self, in_c, out_c):
         return nn.Sequential(
-            nn.Conv3d(in_c, out_c, kernel_size=3, padding=0),
+            nn.Conv3d(in_c, out_c, kernel_size=3, padding=1),
             nn.LeakyReLU(),
             nn.MaxPool3d((2, 2, 2))
         )
@@ -58,7 +60,8 @@ def train_model(
     device: torch.device,
     epochs: int = 10
 ):
-    logger.info(f"Start of model training on device: {device}")
+    scaler = GradScaler("cuda")
+    logger.info(f"Start of model training (AMP enabled) on device: {device}")
     model.train()
     for epoch in range(epochs):
         running_loss = 0.0
@@ -70,12 +73,18 @@ def train_model(
             labels: torch.Tensor
             
             images, labels = images.to(device), labels.to(device)
-            
             optimizer.zero_grad()
-            outputs = model(images) # [Batch, 6]
-            loss: torch.Tensor = criterion(outputs, labels) # labels in range [0, 5]
-            loss.backward()
-            optimizer.step()
+            
+            # Forward pass with autocast
+            with autocast(device_type="cuda"):
+                outputs = model(images) # [Batch, 6]
+                loss: torch.Tensor = criterion(outputs, labels) # labels in range [0, 5]
+            
+            # Backward pass with gradient scaling to fix underflow problem
+            scaler.scale(loss).backward()
+            
+            scaler.step(optimizer) # Optimizer step through scaler
+            scaler.update()
             
             running_loss += loss.item()
             _, predicted = torch.max(outputs.data, 1)
@@ -99,17 +108,18 @@ def evaluate_model(
     all_predictions, all_labels = [], []
    
     with torch.no_grad():
-        for images, labels in test_loader:
-            images: torch.Tensor
-            labels: torch.Tensor
-            
-            images, labels = images.to(device), labels.to(device)
-            
-            outputs = model(images)
-            _, predicted = torch.max(outputs, 1)
-            
-            all_predictions.extend(predicted.cpu().numpy())
-            all_labels.extend(labels.cpu().numpy())
+        with autocast(device_type="cuda"):
+            for images, labels in test_loader:
+                images: torch.Tensor
+                labels: torch.Tensor
+                
+                images, labels = images.to(device), labels.to(device)
+                
+                outputs = model(images)
+                _, predicted = torch.max(outputs, 1)
+                
+                all_predictions.extend(predicted.cpu().numpy())
+                all_labels.extend(labels.cpu().numpy())
     
     report = classification_report(
         all_labels, 

@@ -85,7 +85,7 @@ def load_dataset(target_shape: tuple[int, int, int], batch_size: int = 4, load_a
         
         class_names = train_dataset.classes
         
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
         test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
         logger.info(f"Loaded {len(class_names)} classes: {class_names}")
