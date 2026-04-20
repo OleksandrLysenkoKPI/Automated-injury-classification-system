@@ -1,16 +1,61 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import shutil
+import random
 from pathlib import Path
 from ..logger_module.logger import CustomLogger
 
 logger = CustomLogger("Imaging_utils_log")
+
+def split_data(root_path: str | Path, train_ratio: float = 0.8):
+    logger.info("Start data splitting process")
+    root_path = Path(root_path)
+    base_dir = root_path.parent
+    
+    train_split_path = base_dir / "train_split"
+    val_path = base_dir / "val"
+    
+    try:
+        for cls_folder in root_path.iterdir():
+            if not cls_folder.is_dir():
+                continue
+            
+            (train_split_path / cls_folder.name).mkdir(parents=True, exist_ok=True)
+            (val_path / cls_folder.name).mkdir(parents=True, exist_ok=True)
+            
+            files = list(cls_folder.glob("*.npy"))
+            random.shuffle(files)
+            
+            split_idx = int(len(files) * train_ratio)
+            train_files = files[:split_idx]
+            val_files = files[split_idx:]
+            
+            for f in train_files:
+                shutil.copy(f, train_split_path / cls_folder.name / f.name)
+            for f in val_files:
+                shutil.copy(f, val_path / cls_folder.name / f.name)
+    except Exception as e:
+        logger.error(f"Error occurred during data splitting: {e}")
+    
+    logger.info(f"Split complete. Train: {train_split_path}, Val: {val_path}")
+    return train_split_path, val_path
 
 def add_noise(data: np.ndarray, standard: float) -> np.ndarray:
     noise = np.random.normal(0, standard, data.shape).astype(np.float32)
     return data + noise
 
 def augment_and_save_dataset(root_path: str | Path):
+    """Augments given NumPy data and saves it in a separate folder. Includes several augmentations:
+    1. Original.
+    2. Horizontal flip.
+    3. 90 degree rotation.
+    4. Noise.<br>
+    And their respective combinations.
+
+    Args:
+        root_path (str | Path): Path to folder with data for augmentation
+    """
     root_path = Path(root_path)
     output_base = root_path.parent / "train_augmented"
     output_base.mkdir(parents=True, exist_ok=True)
