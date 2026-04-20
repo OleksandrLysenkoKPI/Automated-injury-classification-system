@@ -18,27 +18,34 @@ class KneeNet(nn.Module):
     def __init__(self, num_classes: int):
         super(KneeNet, self).__init__()
         
-        self.conv_layer1 = self._conv_layer_set(1, 32)
-        self.conv_layer2 = self._conv_layer_set(32, 64)
+        self.conv1 = self._conv_layer_set(1, 16)
+        self.conv2 = self._conv_layer_set(16, 32)
+        self.conv3 = self._conv_layer_set(32, 64)
+        self.conv4 = self._conv_layer_set(64, 128)
         
-        self.fc1 = nn.Linear(64, 128) # After GAP will remain only 64 channels 
-        self.fc2 = nn.Linear(128, num_classes)
-        
-        self.relu = nn.LeakyReLU()
-        self.batch = nn.BatchNorm1d(128)
-        self.drop = nn.Dropout(p=0.3)
         self.gap = nn.AdaptiveAvgPool3d((1, 1, 1))
+        
+        self.fc1 = nn.Linear(128, 256)
+        self.fc2 = nn.Linear(256, num_classes)
+        
+        self.relu = nn.LeakyReLU(0.1)
+        self.batch = nn.BatchNorm1d(256)
+        self.drop = nn.Dropout(p=0.4)
+        
     
     def _conv_layer_set(self, in_c, out_c):
         return nn.Sequential(
             nn.Conv3d(in_c, out_c, kernel_size=3, padding=1),
-            nn.LeakyReLU(),
+            nn.BatchNorm3d(out_c),
+            nn.LeakyReLU(0.1),
             nn.MaxPool3d((2, 2, 2))
         )
     
     def forward(self, x: torch.Tensor):
-        out: torch.Tensor = self.conv_layer1(x)
-        out = self.conv_layer2(out)
+        out: torch.Tensor = self.conv1(x)
+        out = self.conv2(out)
+        out = self.conv3(out)
+        out = self.conv4(out)
         
         out = self.gap(out)
         out = out.view(out.size(0), -1)
@@ -155,10 +162,11 @@ def start_model_pipeline(
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-2)
-
+    weights = torch.tensor([1.5, 2.5, 1.5, 1.5, 0.8, 1.2]).to(device)
+    criterion = nn.CrossEntropyLoss(weight=weights)
+    optimizer = optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-3)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=epochs, eta_min=1e-6)
+    
     try:
         train_model(model, train_loader, criterion, optimizer, scheduler, device, epochs=epochs)
         evaluate_model(model, test_loader, device, classes)
