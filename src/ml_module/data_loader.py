@@ -4,7 +4,6 @@ from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import torch
 import torch.nn.functional as F
-import random
 from pathlib import Path
 
 logger = CustomLogger("DataLoader_log")
@@ -36,38 +35,37 @@ class Knee3DPathologyDataset(Dataset):
         
     def __len__(self):
         return len(self.samples)
-    
-    def _apply_augmentations(self, tensor: torch.Tensor) -> torch.Tensor:
-        """Private method for 3D tensor augmentation"""
-        if random.random() > 0.5:
-            tensor = torch.flip(tensor, dims=[-1])
-                
-        if random.random() > 0.5:
-            k = random.choice([1, 2, 3])
-            tensor = torch.rot90(tensor, k, dims=[-2, -1])
-            
-        if random.random() > 0.5:
-            noise = torch.rand_like(tensor) * 0.01
-            tensor += noise
-
-        return tensor
-    
+        
+    def _pad_or_crop_depth(self, tensor: torch.Tensor, target_depth: int) -> torch.Tensor:
+        d = tensor.shape[1] # tensor shape is [1, D, H, W]
+        
+        if d == target_depth:
+            return tensor
+        
+        if d > target_depth:
+            start_d = (d - target_depth) // 2 # Center crop depth
+            return tensor[:, start_d:start_d + target_depth :, :]
+        else:
+            # Pad Depth with 0
+            pad_total = target_depth - d
+            pad_left = pad_total // 2
+            pad_right = pad_total - pad_left
+            return F.pad(tensor, (0, 0, 0, 0, pad_left, pad_right), mode="constant", value=0)
+        
     def __getitem__(self, index):
         file_path, label = self.samples[index]
-        
+
         try:
             data = np.load(file_path)
             tensor = torch.from_numpy(data).float()
+            tensor = tensor.unsqueeze(0) # [D, H, W] -> [1, D, H,W]           
             
-            tensor = tensor.unsqueeze(0) # [D, H, W] -> [1, D, H,W]
+            temp = tensor.unsqueeze(0) # [1, 1, D, H, W]
+            temp = F.interpolate(temp, size=(tensor.shape[1], self.target_shape[1], self.target_shape[2]), mode='trilinear', align_corners=False)
             
-            # Data augmentation
-            if self.is_train:
-                tensor = self._apply_augmentations(tensor)
+            tensor = temp.squeeze(0) # [1, D, H, W]
             
-            tensor = tensor.unsqueeze(0) # [B, C, D, H, W]
-            tensor = F.interpolate(tensor, size=self.target_shape, mode='trilinear', align_corners=False)
-            tensor = tensor.squeeze(0) # [C, D, H, W]
+            tensor = self._pad_or_crop_depth(tensor, self.target_shape[0])
             
             return tensor, label
         except Exception as e:
