@@ -8,59 +8,64 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from torch.amp.autocast_mode import autocast
 from torch.amp.grad_scaler import GradScaler
+from torchvision.models.video import r3d_18, R3D_18_Weights
 from ..logger_module.logger import CustomLogger
 from .data_loader import load_dataset
 from sklearn.metrics import classification_report
 
 logger = CustomLogger("ML_module_log")
 
-class KneeNet(nn.Module):
+# TODO: rewrite utilizing fine-tuned 3D ResNet
+class KneeResNet(nn.Module):
     def __init__(self, num_classes: int):
-        super(KneeNet, self).__init__()
+        super(KneeResNet, self).__init__()
         
-        self.conv1 = self._conv_layer_set(1, 16)
-        self.conv2 = self._conv_layer_set(16, 32)
-        self.conv3 = self._conv_layer_set(32, 64)
-        self.conv4 = self._conv_layer_set(64, 128)
+        weights = R3D_18_Weights.DEFAULT
+        self.model = r3d_18(weights=weights)
         
-        self.gap = nn.AdaptiveAvgPool3d((1, 1, 1))
+        original_conv = self.model.stem[0] # type: ignore
+        self.model.stem[0] = nn.Conv3d( # type: ignore
+            in_channels=1, 
+            out_channels=original_conv.out_channels,
+            kernel_size=original_conv.kernel_size,
+            stride=original_conv.stride,
+            padding=original_conv.padding,
+            bias=False
+        )
         
-        self.fc1 = nn.Linear(128, 256)
-        self.fc2 = nn.Linear(256, num_classes)
+        num_ftrs = self.model.fc.in_features
+        self.model.fc = nn.Linear(num_ftrs, num_classes)
         
-        self.relu = nn.LeakyReLU(0.1)
-        self.batch = nn.BatchNorm1d(256)
-        self.drop = nn.Dropout(p=0.4)
+        self.dropout = nn.Dropout(p=0.4)
         
     
-    def _conv_layer_set(self, in_c, out_c):
-        return nn.Sequential(
-            nn.Conv3d(in_c, out_c, kernel_size=3, padding=1),
-            nn.BatchNorm3d(out_c),
-            nn.LeakyReLU(0.1),
-            nn.MaxPool3d((2, 2, 2))
-        )
+    # def _conv_layer_set(self, in_c, out_c):
+    #     return nn.Sequential(
+    #         nn.Conv3d(in_c, out_c, kernel_size=3, padding=1),
+    #         nn.BatchNorm3d(out_c),
+    #         nn.LeakyReLU(0.1),
+    #         nn.MaxPool3d((2, 2, 2))
+    #     )
     
     def forward(self, x: torch.Tensor):
-        out: torch.Tensor = self.conv1(x)
-        out = self.conv2(out)
-        out = self.conv3(out)
-        out = self.conv4(out)
+        x = self.model.stem(x)
+        x = self.model.layer1(x)
+        x = self.model.layer2(x)
+        x = self.model.layer3(x)
+        x = self.model.layer4(x)
+        x = self.model.avgpool(x)
+        x = torch.flatten(x, 1)
         
-        out = self.gap(out)
-        out = out.view(out.size(0), -1)
+        x = self.dropout(x)
+        x = self.model.fc(x)
         
-        out = self.fc1(out)
-        out = self.relu(out)
-        out = self.batch(out)
-        out = self.drop(out)
-        out = self.fc2(out)
-        return out
+        return x
 
 
 def train_model(
     model: nn.Module,
     train_loader: DataLoader,
+    val_loader: DataLoader,
     criterion: _Loss,
     optimizer: Optimizer,
     scheduler: LRScheduler,
@@ -68,12 +73,13 @@ def train_model(
     epochs: int = 10
 ):
     scaler = GradScaler("cuda")
+    best_val_acc = 0.0
+    best_model_state = None
     logger.info(f"Start of model training (AMP enabled) on device: {device}")
-    model.train()
+    
     for epoch in range(epochs):
-        running_loss = 0.0
-        correct = 0
-        total = 0
+        model.train()
+        train_loss, train_correct, train_total = 0.0, 0, 0
 
         for images, labels in train_loader:
             images: torch.Tensor
@@ -84,28 +90,56 @@ def train_model(
             
             # Forward pass with autocast
             with autocast(device_type="cuda"):
-                outputs = model(images) # [Batch, 6]
-                loss: torch.Tensor = criterion(outputs, labels) # labels in range [0, 5]
+                outputs = model(images)
+                loss: torch.Tensor = criterion(outputs, labels)
             
             # Backward pass with gradient scaling to fix underflow problem
             scaler.scale(loss).backward()
-            
-            scaler.step(optimizer) # Optimizer step through scaler
+            scaler.step(optimizer)
             scaler.update()
             
-            running_loss += loss.item()
+            train_loss += loss.item()
             _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
+            train_total += labels.size(0)
+            train_correct += (predicted == labels).sum().item()
         
+        model.eval()
+        val_loss, val_correct, val_total = 0.0, 0, 0
+        
+        with torch.no_grad():
+            with autocast(device_type="cuda"):
+                for images, labels in val_loader:
+                    images, labels = images.to(device), labels.to(device)
+                    outputs = model(images)
+                    loss = criterion(outputs, labels)
+                    
+                    val_loss += loss.item()
+                    _, predicted = torch.max(outputs.data, 1)
+                    val_total += labels.size(0)
+                    val_correct += (predicted == labels).sum().item()
+        
+        train_acc = 100 * train_correct / train_total
+        val_acc = 100 * val_correct / val_total
         scheduler.step()
         
-        current_lr = optimizer.param_groups[0]['lr']
-        accuracy = 100 * correct / total
-        logger.info(f"Epoch [{epoch+1}/{epochs}] | Loss: {running_loss/len(train_loader):.4f} | Acc: {accuracy:.2f}% | LR: {current_lr:.6f}")
+        logger.info(
+            f"Epoch [{epoch+1}/{epochs}] | "
+            f"Train Loss: {train_loss/len(train_loader):.4f} Acc: {train_acc:.2f}% | "
+            f"Val Loss: {val_loss/len(val_loader):.4f} Acc: {val_acc:.2f}%"
+        )
+        
+        if val_acc > best_val_acc:
+            best_val_acc = val_acc
+            best_model_state = model.state_dict().copy()
+            logger.info(f"New best model found at epoch {epoch+1} with Val Acc: {val_acc:.2f}%")
+    
+    if best_model_state:
+        model.load_state_dict(best_model_state)
+        
+    return model
 
 def evaluate_model(
-    model: KneeNet,
+    model: KneeResNet,
     test_loader: DataLoader,
     device: torch.device,
     class_names: list[str]
@@ -142,11 +176,11 @@ def evaluate_model(
 
 
 def start_model_pipeline(
-    epochs: int = 5, 
+    epochs: int = 30, 
     batch_size: int = 4, 
     target_shape: tuple[int, int, int] = (32, 256, 256), 
     save_file_name: str = "knee_3d_pathology_model",
-    use_augmented: bool = False
+    use_augmented: bool = True
 ):
     """Starts model training and evaluation pipeline. Saves model at the end.
 
@@ -156,20 +190,30 @@ def start_model_pipeline(
         target_shape (tuple[int, int, int], optional): Defaults to (32, 256, 256).
         save_file_name (str, optional): Defaults to "knee_3d_pathology_model".
     """
-    train_loader, test_loader, classes = load_dataset(target_shape=target_shape, batch_size=batch_size, load_augmented=use_augmented)
+    train_loader, val_loader, test_loader, classes = load_dataset(target_shape=target_shape, batch_size=batch_size, load_augmented=use_augmented)
 
-    model = KneeNet(num_classes=len(classes))
+    model = KneeResNet(num_classes=len(classes))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
+    # Freezing
+    for param in model.model.parameters():
+        param.requires_grad = False
+    
+    for name, param in model.named_parameters():
+        if "fc" in name or "stem.0" in name:
+            param.requires_grad = True
+    
+    trainable_params = [p for p in model.parameters() if p.requires_grad]
+
     weights = torch.tensor([1.5, 2.5, 1.5, 1.5, 0.8, 1.2]).to(device)
     criterion = nn.CrossEntropyLoss(weight=weights, label_smoothing=0.1)
-    optimizer = optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.05)
+    optimizer = optim.AdamW(trainable_params, lr=1e-3, weight_decay=0.05)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=epochs, eta_min=1e-6)
     
     try:
-        train_model(model, train_loader, criterion, optimizer, scheduler, device, epochs=epochs)
-        evaluate_model(model, test_loader, device, classes)
+        model = train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, device, epochs=epochs)
+        evaluate_model(model, test_loader, device, classes) # type: ignore
         
         torch.save(model.state_dict(), f"{save_file_name}.pth")
         logger.info(f"Model saved to {save_file_name}.pth")
