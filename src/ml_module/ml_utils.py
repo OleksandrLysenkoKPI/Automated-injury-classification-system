@@ -31,6 +31,8 @@ def get_dataset_paths():
     return {
         "train": dataset_path / "train",
         "train_augmented": dataset_path / "train_augmented",
+        "train_split": dataset_path / "train_split",
+        "val": dataset_path / "val",
         "test": dataset_path / "test"
     }
 
