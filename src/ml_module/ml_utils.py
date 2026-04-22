@@ -6,9 +6,30 @@ import random
 import os
 from pathlib import Path
 import numpy as np
+import matplotlib.pyplot as plt
 
 
 logger = CustomLogger("ML_utils_log")
+
+def verify_dataset_processing(dataset, sample_idx=0):
+    tensor, label = dataset[sample_idx]
+    
+    logger.info(f"Tensor shape after processing: {tensor.shape}")
+    logger.info(f"Label: {label} (Class: {dataset.classes[label]})")
+    
+    mid_d = tensor.shape[1] // 2
+    slice_to_show = tensor[0, mid_d, :, :].numpy()
+    
+    plt.figure(figsize=(8, 8))
+    plt.imshow(slice_to_show, cmap='gray')
+    plt.title(f"Processed Knee: {dataset.classes[label]}\nShape: {tensor.shape} | Slice: {mid_d}")
+    plt.axis('off')
+    
+    plt.grid(color='red', linestyle='--', linewidth=0.5, alpha=0.5)
+    print(f"Min value: {tensor.min().item()}")
+    print(f"Max value: {tensor.max().item()}")
+    print(f"Mean value: {tensor.mean().item()}")
+    plt.show()
 
 def check_pytorch_install():
     logger.info(f"PyTorch version: {torch.__version__}")
