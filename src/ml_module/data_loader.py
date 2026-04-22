@@ -88,6 +88,8 @@ class Knee3DPathologyDataset(Dataset):
             if tensor.max() == 0:
                 logger.warning(f"Warning: Sample {file_path} is empty after processing!")
             
+            tensor = torch.clamp(tensor, 0.0, 1.0)
+            
             return tensor, label
         except Exception as e:
             logger.error(f"Error loading sample {file_path}: {e}")
@@ -101,7 +103,6 @@ def load_dataset(target_shape: tuple[int, int, int], batch_size: int = 4, load_a
         
         if load_augmented:
             train_dataset = Knee3DPathologyDataset(paths["train_augmented"], target_shape=target_shape, is_train=True)
-            verify_dataset_processing(train_dataset, sample_idx=60)
             val_dataset = Knee3DPathologyDataset(paths["val"], target_shape=target_shape, is_train=True)
             val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
         else:
@@ -109,6 +110,8 @@ def load_dataset(target_shape: tuple[int, int, int], batch_size: int = 4, load_a
         test_dataset = Knee3DPathologyDataset(paths["test"], target_shape=target_shape, is_train=False)
         
         class_names = train_dataset.classes
+        
+        verify_dataset_processing(train_dataset, sample_idx=967)
         
         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
         test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
