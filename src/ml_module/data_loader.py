@@ -9,7 +9,7 @@ from pathlib import Path
 logger = CustomLogger("DataLoader_log")
 
 class Knee3DPathologyDataset(Dataset):
-    def __init__(self, root_dir: str | Path, target_shape: tuple[int, int, int]=(16, 128, 128), is_train: bool = False):
+    def __init__(self, root_dir: str | Path, target_shape: tuple[int, int, int], is_train: bool = False):
         self.root_dir = Path(root_dir)
         self.target_shape = target_shape
         self.is_train = is_train
@@ -35,37 +35,52 @@ class Knee3DPathologyDataset(Dataset):
         
     def __len__(self):
         return len(self.samples)
+    
+    def _resize_3d(self, tensor: torch.Tensor, target_shape: tuple[int, int, int]) -> torch.Tensor:
+        c, d, h, w = tensor.shape
+        td, th, tw = target_shape
         
-    def _pad_or_crop_depth(self, tensor: torch.Tensor, target_depth: int) -> torch.Tensor:
-        d = tensor.shape[1] # tensor shape is [1, D, H, W]
+        def get_coords(current, target):
+            if current == target:
+                return 0, 0, None
+            elif current > target:
+                start = (current - target) // 2
+                return start, start + target, True # True = crop
+            else:
+                pad_total = target - current
+                pad_before = pad_total // 2
+                pad_after = pad_total - pad_before
+                return pad_before, pad_after, False # False = pad
         
-        if d == target_depth:
-            return tensor
+        d_start, d_end, d_crop = get_coords(d, td)
+        h_start, h_end, h_crop = get_coords(h, th)
+        w_start, w_end, w_crop = get_coords(w, tw)
         
-        if d > target_depth:
-            start_d = (d - target_depth) // 2 # Center crop depth
-            return tensor[:, start_d:start_d + target_depth :, :]
+        if d_crop:
+            tensor = tensor[:, d_start:d_end, :, :]
         else:
-            # Pad Depth with 0
-            pad_total = target_depth - d
-            pad_left = pad_total // 2
-            pad_right = pad_total - pad_left
-            return F.pad(tensor, (0, 0, 0, 0, pad_left, pad_right), mode="constant", value=0)
+            tensor = F.pad(tensor, (0, 0, 0, 0, d_start, d_end), mode='constant', value=0)
+
+        if h_crop:
+            tensor = tensor[:, :, h_start:h_end, :]
+        else:
+            tensor = F.pad(tensor, (0, 0, h_start, h_end, 0, 0), mode='constant', value=0)
+            
+        if w_crop:
+            tensor = tensor[:, :, :, w_start:w_end]
+        else:
+            tensor = F.pad(tensor, (w_start, w_end, 0, 0, 0, 0), mode='constant', value=0)
+        
+        return tensor
         
     def __getitem__(self, index):
         file_path, label = self.samples[index]
 
         try:
             data = np.load(file_path)
-            tensor = torch.from_numpy(data).float()
-            tensor = tensor.unsqueeze(0) # [D, H, W] -> [1, D, H,W]           
+            tensor = torch.from_numpy(data).float().unsqueeze(0) # [D, H, W] -> [1, D, H,W]
             
-            temp = tensor.unsqueeze(0) # [1, 1, D, H, W]
-            temp = F.interpolate(temp, size=(tensor.shape[1], self.target_shape[1], self.target_shape[2]), mode='trilinear', align_corners=False)
-            
-            tensor = temp.squeeze(0) # [1, D, H, W]
-            
-            tensor = self._pad_or_crop_depth(tensor, self.target_shape[0])
+            tensor = self._resize_3d(tensor, self.target_shape)
             
             return tensor, label
         except Exception as e:
