@@ -1,5 +1,5 @@
 from ..logger_module.logger import CustomLogger
-from .ml_utils import get_dataset_paths
+from .ml_utils import get_dataset_paths, verify_dataset_processing
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import torch
@@ -78,9 +78,15 @@ class Knee3DPathologyDataset(Dataset):
 
         try:
             data = np.load(file_path)
-            tensor = torch.from_numpy(data).float().unsqueeze(0) # [D, H, W] -> [1, D, H,W]
+            tensor = torch.from_numpy(data).float().unsqueeze(0).unsqueeze(0) # [D, H, W] -> [B=1, C=1, D, H,W]
             
+            current_depth = tensor.shape[2]
+            temp = F.interpolate(tensor, size=(current_depth, 224, 224), mode='trilinear', align_corners=False)
+            tensor = temp.squeeze(0)
             tensor = self._resize_3d(tensor, self.target_shape)
+            
+            if tensor.max() == 0:
+                logger.warning(f"Warning: Sample {file_path} is empty after processing!")
             
             return tensor, label
         except Exception as e:
@@ -95,6 +101,7 @@ def load_dataset(target_shape: tuple[int, int, int], batch_size: int = 4, load_a
         
         if load_augmented:
             train_dataset = Knee3DPathologyDataset(paths["train_augmented"], target_shape=target_shape, is_train=True)
+            verify_dataset_processing(train_dataset, sample_idx=60)
             val_dataset = Knee3DPathologyDataset(paths["val"], target_shape=target_shape, is_train=True)
             val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
         else:
