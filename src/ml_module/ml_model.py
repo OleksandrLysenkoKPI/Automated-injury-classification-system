@@ -73,8 +73,6 @@ def train_model(
             logger.info("Unfreezing layers for fine-tuning.")
             for param in model.parameters():
                 param.requires_grad = True
-                
-            optimizer.param_groups[0]['lr'] = 1e-5
         
         model.train()
         train_loss, train_correct, train_total = 0.0, 0, 0
@@ -194,18 +192,17 @@ def start_model_pipeline(
     model.to(device)
 
     # Freezing
-    for param in model.model.parameters():
-        param.requires_grad = False
-    
-    for name, param in model.named_parameters():
-        if "fc" in name or "stem.0" in name:
+    for name, param in model.model.parameters():
+        if "layer3" in name or "layer4" in name or "fc" in name or "stem.0" in name:
             param.requires_grad = True
+        else:
+            param.requires_grad = False
     
     trainable_params = [p for p in model.parameters() if p.requires_grad]
 
     weights = torch.tensor([1.5, 2.5, 1.5, 1.5, 0.8, 1.2]).to(device)
-    criterion = nn.CrossEntropyLoss(weight=weights, label_smoothing=0.1)
-    optimizer = optim.AdamW(trainable_params, lr=1e-3, weight_decay=0.05)
+    criterion = nn.CrossEntropyLoss(weight=weights, label_smoothing=0.05)
+    optimizer = optim.AdamW(trainable_params, lr=3e-4, weight_decay=1e-3)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=epochs, eta_min=1e-6)
     
     try:
