@@ -37,15 +37,6 @@ class KneeResNet(nn.Module):
         self.model.fc = nn.Linear(num_ftrs, num_classes)
         
         self.dropout = nn.Dropout(p=0.4)
-        
-    
-    # def _conv_layer_set(self, in_c, out_c):
-    #     return nn.Sequential(
-    #         nn.Conv3d(in_c, out_c, kernel_size=3, padding=1),
-    #         nn.BatchNorm3d(out_c),
-    #         nn.LeakyReLU(0.1),
-    #         nn.MaxPool3d((2, 2, 2))
-    #     )
     
     def forward(self, x: torch.Tensor):
         x = self.model.stem(x)
@@ -78,9 +69,15 @@ def train_model(
     logger.info(f"Start of model training (AMP enabled) on device: {device}")
     
     for epoch in range(epochs):
+        if epoch == 10:
+            logger.info("Unfreezing layers for fine-tuning.")
+            for param in model.parameters():
+                param.requires_grad = True
+                
+            optimizer.param_groups[0]['lr'] = 1e-5
+        
         model.train()
         train_loss, train_correct, train_total = 0.0, 0, 0
-
         for images, labels in train_loader:
             images: torch.Tensor
             labels: torch.Tensor
@@ -105,7 +102,6 @@ def train_model(
         
         model.eval()
         val_loss, val_correct, val_total = 0.0, 0, 0
-        
         with torch.no_grad():
             with autocast(device_type="cuda"):
                 for images, labels in val_loader:
@@ -125,7 +121,8 @@ def train_model(
         logger.info(
             f"Epoch [{epoch+1}/{epochs}] | "
             f"Train Loss: {train_loss/len(train_loader):.4f} Acc: {train_acc:.2f}% | "
-            f"Val Loss: {val_loss/len(val_loader):.4f} Acc: {val_acc:.2f}%"
+            f"Val Loss: {val_loss/len(val_loader):.4f} Acc: {val_acc:.2f}% | "
+            f"LR: {optimizer.param_groups[0]['lr']:.6f}"
         )
         
         if val_acc > best_val_acc:
