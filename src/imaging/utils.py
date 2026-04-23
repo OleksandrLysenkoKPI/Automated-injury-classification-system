@@ -4,9 +4,51 @@ import os
 import shutil
 import random
 from pathlib import Path
+from scipy.ndimage import zoom
+from skimage.restoration import denoise_wavelet, estimate_sigma
 from ..logger_module.logger import CustomLogger
 
 logger = CustomLogger("Imaging_utils_log")
+
+def get_knee_bbox(data, threshold=0.01):
+    coords = np.argwhere(data > threshold)
+    if coords.size == 0:
+        return data
+    
+    d0, h0, w0 = coords.min(axis=0)
+    d1, h1, w1 = coords.max(axis=0) + 1
+    
+    return data[d0:d1, h0:h1, w0:w1]
+
+def resample_3d(data, current_spacing, target_spacing=(1.0, 1.0, 1.0)):
+    """Changes array size based on physical distancce between voxels.
+
+    Args:
+        data (_type_): 3D array [D, H, W]
+        current_spacing (tuple): Current voxel size (SliceThickness, PixelSpacing_H, PixelSpacing_W)
+        target_spacing (tuple): Target voxel size.
+    """
+    scale_factors = [c / t for c, t in zip(current_spacing, target_spacing)]
+    
+    resampled_data = zoom(data, scale_factors, order=3, mode='constant', cval=0.0)
+    
+    return resampled_data
+
+def wavelet_denoising_3d(data):
+    """
+    Noise reduction in 3D data using wavelet transformation.
+    """
+    sigma_est = estimate_sigma(data, average_sigmas=True)
+    
+    denoised_data = denoise_wavelet(
+        data,
+        method='BayesShrink',
+        mode='soft',
+        wavelet='db1',
+        rescale_sigma=True
+    )
+    
+    return denoised_data.astype(np.float32)
 
 def split_data(root_path: str | Path, train_ratio: float = 0.8):
     logger.info("Start data splitting process")
