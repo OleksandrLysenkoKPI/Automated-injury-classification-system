@@ -139,12 +139,13 @@ class DICOMProcessor:
             base_name = os.path.splitext(filename)[0]
             
             if self.load_file(file_path):
-                z_spacing, h_spacing, w_spacing = self.spacing
-                processed_hu = self.get_processed_volume(target_range=(0, 1))
-                if processed_hu is None: continue
-                
+                z_spacing, _, _ = self.spacing
                 if z_spacing > 10.0:
                     logger.warning(f"Skipping survey/scout scan: {filename}")
+                    continue
+                
+                processed_hu = self.get_processed_volume(target_range=(0, 1))
+                if processed_hu is None:
                     continue
                 
                 if output_npy_dir:
