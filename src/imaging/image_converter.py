@@ -41,10 +41,16 @@ class DICOMProcessor:
                 self._pixels_hu = self.ds.pixel_array.astype(np.float32)
         return self._pixels_hu
     
-    def get_normalized(self, target_range=(0, 1)):
+    def get_normalized(self, target_range=(0, 1), clumping_percentile=(1, 99)):
         """Normalizes pixel values to a specific range."""
         try:
             hu_data = self.pixels_hu
+            
+            lower_bound = np.percentile(hu_data, clumping_percentile[0])
+            upper_bound = np.percentile(hu_data, clumping_percentile[1])
+            
+            hu_data = np.clip(hu_data, lower_bound, upper_bound)
+            
             img_min, img_max = hu_data.min(), hu_data.max()
             
             if img_max - img_min == 0:
