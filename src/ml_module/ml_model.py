@@ -1,3 +1,5 @@
+from typing import Any
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -36,7 +38,7 @@ class KneeResNet(nn.Module):
         num_ftrs = self.model.fc.in_features
         self.model.fc = nn.Linear(num_ftrs, num_classes)
         
-        self.dropout = nn.Dropout(p=0.4)
+        self.dropout = nn.Dropout(p=0.6)
     
     def forward(self, x: torch.Tensor):
         x = self.model.stem(x)
@@ -52,6 +54,33 @@ class KneeResNet(nn.Module):
         
         return x
 
+class EarlyStopping:
+    def __init__(self, patience: int = 7, min_delta: float = 0.0, verbose=True):
+        """
+        Args:
+            patience (int): Number of epochs to wait after the last update. Defaults to 7.
+            min_delta (float): The smallest change required for it to be considered an improvement. Defaults to 0.0.
+        """
+        self.patience = patience
+        self.min_delta = min_delta
+        self.verbose = verbose
+        self.counter = 0
+        self.best_loss = None
+        self.early_stop = False
+        
+    def __call__(self, val_loss):
+        if self.best_loss is None:
+            self.best_loss = val_loss
+        elif val_loss > self.best_loss - self.min_delta:
+            self.counter += 1
+            if self.verbose:
+                logger.info(f"EarlyStopping counter: {self.counter} out of {self.patience}")
+            if self.counter >= self.patience:
+                self.early_stop = True
+        else:
+            self.best_loss = val_loss
+            self.counter = 0
+        
 
 def train_model(
     model: nn.Module,
@@ -66,6 +95,9 @@ def train_model(
     scaler = GradScaler("cuda")
     best_val_acc = 0.0
     best_model_state = None
+    
+    early_stopping = EarlyStopping(patience=7, verbose=True)
+    
     logger.info(f"Start of model training (AMP enabled) on device: {device}")
     
     for epoch in range(epochs):
@@ -112,6 +144,7 @@ def train_model(
                     val_total += labels.size(0)
                     val_correct += (predicted == labels).sum().item()
         
+        avg_val_loss = val_loss / len(val_loader)
         train_acc = 100 * train_correct / train_total
         val_acc = 100 * val_correct / val_total
         scheduler.step()
@@ -127,7 +160,13 @@ def train_model(
             best_val_acc = val_acc
             best_model_state = model.state_dict().copy()
             logger.info(f"New model found at epoch {epoch+1} with Val Acc: {val_acc:.2f}%")
-    
+
+        if epoch > 15:
+            early_stopping(avg_val_loss)
+            if early_stopping.early_stop:
+                logger.info("Early stopping triggered. Finishing training.")
+                break
+        
     if best_model_state:
         model.load_state_dict(best_model_state)
         
@@ -201,8 +240,8 @@ def start_model_pipeline(
     trainable_params = [p for p in model.parameters() if p.requires_grad]
 
     weights = torch.tensor([1.5, 2.5, 1.5, 1.5, 0.8, 1.2]).to(device)
-    criterion = nn.CrossEntropyLoss(weight=weights, label_smoothing=0.05)
-    optimizer = optim.AdamW(trainable_params, lr=3e-4, weight_decay=1e-3)
+    criterion = nn.CrossEntropyLoss(weight=weights, label_smoothing=0.1)
+    optimizer = optim.AdamW(trainable_params, lr=3e-4, weight_decay=1e-2)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=epochs, eta_min=1e-6)
     
     try:
