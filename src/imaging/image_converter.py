@@ -112,7 +112,8 @@ class DICOMProcessor:
         except Exception as e:
             logger.error(f"Pipeline processing failed: {e}")
         return None
-    
+
+# TODO: Fix save folder structure
     def save_as_png(self, data, output_path):
         """Slices the volume and saves as PNGs."""
         data = np.squeeze(data)

@@ -40,7 +40,7 @@ if __name__ == "__main__":
     elif choice_input == 5:
         augment_and_save_dataset('data/prepared_data/train_split')
     elif choice_input == 6:
-        target_shape = (24, 192, 192)
+        target_shape = (24, 192, 192) # TODO: Analyze numpy arrays shapes and adjust
         load_dataset(target_shape, batch_size=4, load_augmented=True)
     elif choice_input == 7:
         start_model_pipeline(epochs=50, target_shape=(24, 192, 192), save_file_name="knee_3d_pathology_model", use_augmented=True)

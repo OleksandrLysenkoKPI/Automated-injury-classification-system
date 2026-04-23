@@ -50,6 +50,9 @@ def wavelet_denoising_3d(data):
     
     return denoised_data.astype(np.float32)
 
+# TODO: Rewrite to split data into:
+#       1. test and train 
+#       2. split validation data from train
 def split_data(root_path: str | Path, train_ratio: float = 0.8):
     logger.info("Start data splitting process")
     root_path = Path(root_path)
