@@ -3,6 +3,7 @@ from pydicom.pixels.processing import apply_rescale
 import numpy as np
 from PIL import Image
 import os
+from .utils import wavelet_denoising_3d, resample_3d, get_knee_bbox
 from ..logger_module.logger import CustomLogger
 
 logger = CustomLogger("Imaging_log")
@@ -41,87 +42,119 @@ class DICOMProcessor:
                 self._pixels_hu = self.ds.pixel_array.astype(np.float32)
         return self._pixels_hu
     
-    def get_normalized(self, target_range=(0, 1), clumping_percentile=(1, 99)):
-        """Normalizes pixel values to a specific range."""
-        try:
-            hu_data = self.pixels_hu
-            
-            lower_bound = np.percentile(hu_data, clumping_percentile[0])
-            upper_bound = np.percentile(hu_data, clumping_percentile[1])
-            
-            hu_data = np.clip(hu_data, lower_bound, upper_bound)
-            
-            img_min, img_max = hu_data.min(), hu_data.max()
-            
-            if img_max - img_min == 0:
-                return np.zeros_like(hu_data)
-            
-            normalized = (hu_data - img_min) / (img_max - img_min)
-            
-            if target_range == (0, 255):
-                return (normalized * 255).astype(np.uint8)
-            return normalized.astype(np.float32)
-        except Exception as e:
-            logger.error(f"Normalization error: {e}")
-            return None
-    
-    def save_as_png(self, output_path):
-        data = self.get_normalized(target_range=(0, 255))
-        if data is not None:
-            data = np.squeeze(data)
-            
-            if data.ndim == 3:
-                num_slices = data.shape[0]
-                base_path = output_path.replace('.png', '')
-                
-                for i in range(num_slices):
-                    slice_data = data[i, :, :]
-                    dicom_name = os.path.basename(base_path)
-                    dicom_dir = os.path.join(os.path.dirname(base_path), dicom_name)
-                    os.makedirs(dicom_dir, exist_ok=True)
-                    slice_path = os.path.join(dicom_dir, f"slice{i:03d}.png")
-                    Image.fromarray(slice_data).save(slice_path)
-                
-                logger.info(f"Saved {num_slices} slices from one DICOM to PNG")
-                return True
-            elif data.ndim == 2:
-                Image.fromarray(data).save(output_path)
-                return True
-            else:
-                logger.error(f"Unsupported shape: {data.shape}")
-                return False
+    @property
+    def spacing(self):
+        """Returns (SliceThickness, PixelSpacing_H, PixelSpacing_W)"""
+        if self.ds is None:
+            return (1.0, 1.0, 1.0)
         
-    def save_as_npy(self, output_path):
-        data = self.get_normalized(target_range=(0, 1))
-        if data is not None:
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            np.save(output_path, data)
+        z_spacing = float(getattr(self.ds, 'SpacingBetweenSlices', 1.0))
+        
+        pixel_spacing = None
+        
+        try:
+            if hasattr(self.ds, 'SharedFunctionalGroupsSequence'):
+                shared_groups = self.ds.SharedFunctionalGroupsSequence[0]
+                if hasattr(shared_groups, 'PixelMeasuresSequence'):
+                    pixel_spacing = shared_groups.PixelMeasuresSequence[0].PixelSpacing
+            
+            if pixel_spacing is None and hasattr(self.ds, 'PerFrameFunctionalGroupsSequence'):
+                frame_groups = self.ds.PerFrameFunctionalGroupsSequence[0]
+                if hasattr(frame_groups, 'PixelMeasuresSequence'):
+                    pixel_spacing = frame_groups.PixelMeasuresSequence[0].PixelSpacing
+        except Exception as e:
+            logger.warning(f"Error traversing functional groups: {e}")
+            
+        
+        if pixel_spacing:
+            h_spacing = float(pixel_spacing[0])
+            w_spacing = float(pixel_spacing[1])
+        else:
+            logger.warning("PixelSpacing NOT found in functional groups. Using default 1.0mm")
+            h_spacing, w_spacing = 1.0, 1.0
+        
+        return (z_spacing, h_spacing, w_spacing)
+    
+    def get_normalized(self, data, target_range=(0, 1), clamping_percentile=(1, 99)):
+        """Internal helper to normalize any given array to a specific range and handle outliers via clamping."""
+        lower_bound = np.percentile(data, clamping_percentile[0])
+        upper_bound = np.percentile(data, clamping_percentile[1])
+        
+        data = np.clip(data, lower_bound, upper_bound)
+        img_min, img_max = data.min(), data.max()
+        
+        if img_max - img_min == 0:
+            return np.zeros_like(data)
+        
+        normalized = (data - img_min) / (img_max - img_min)
+        
+        if target_range == (0, 255):
+            return (normalized * 255).astype(np.uint8)
+        
+        return normalized.astype(np.float32)
+    
+    def get_processed_volume(self, target_range=(0, 1), target_spacing=(1.0, 1.0, 1.0)):
+        """Applies the full preprocessing pipeline to the current DICOM object."""
+        try:
+            data = self.pixels_hu
+            
+            logger.info("Applying wavelet denoising...")
+            data = wavelet_denoising_3d(data)
+            
+            logger.info(f"Resampling from {self.spacing} to {target_spacing}...")
+            data = resample_3d(data, self.spacing, target_spacing=target_spacing)
+            
+            logger.info("Applying Bounding Box crop...")
+            data = get_knee_bbox(data, threshold=0.01)
+        
+            normalized_data = self.get_normalized(data, target_range=target_range)
+            return normalized_data
+        except Exception as e:
+            logger.error(f"Pipeline processing failed: {e}")
+        return None
+    
+    def save_as_png(self, data, output_path):
+        """Slices the volume and saves as PNGs."""
+        data = np.squeeze(data)
+        if data.ndim == 3:
+            base_name = os.path.splitext(os.path.basename(output_path))[0]
+            dicom_dir = os.path.join(os.path.dirname(output_path), base_name)
+            os.makedirs(dicom_dir, exist_ok=True)
+            for i, slice_data in enumerate(data):
+                Image.fromarray(slice_data).save(os.path.join(dicom_dir, f"slice{i:03d}.png"))
+            return True
+        elif data.ndim == 2:
+            Image.fromarray(data).save(output_path)
             return True
         return False
     
-    def batch_conversion(self, input_dir, output_dir, conversion_type="png"):
+    def batch_conversion(self, input_dir, output_png_dir=None, output_npy_dir=None):
         """
         Iterates through a folder and converts all DICOM files.
         conversion_type: 'png', 'npy', or 'both'
         """
-        if not os.path.isdir(input_dir):
-            logger.error(f"Input directory not found: {input_dir}")
-            return
-
-        os.makedirs(output_dir, exist_ok=True)
-
         files = [f for f in os.listdir(input_dir) if f.endswith('.dcm')]
-        logger.info(f"Found {len(files)} DICOM files in {input_dir}")
-
         for filename in files:
             file_path = os.path.join(input_dir, filename)
             base_name = os.path.splitext(filename)[0]
             
             if self.load_file(file_path):
-                if conversion_type in ["png", "both"]:
-                    self.save_as_png(os.path.join(output_dir, f"{base_name}.png"))
-                if conversion_type in ["npy", "both"]:
-                    self.save_as_npy(os.path.join(output_dir, f"{base_name}.npy"))
+                z_spacing, h_spacing, w_spacing = self.spacing
+                processed_hu = self.get_processed_volume(target_range=(0, 1))
+                if processed_hu is None: continue
+                
+                if z_spacing > 10.0:
+                    logger.warning(f"Skipping survey/scout scan: {filename}")
+                    continue
+                
+                if output_npy_dir:
+                    npy_path = os.path.join(output_npy_dir, f"{base_name}.npy")
+                    np.save(npy_path, processed_hu)
+
+                if output_png_dir:
+                    png_path = os.path.join(output_png_dir, f"{base_name}.png")
+                    png_data = (processed_hu * 255).astype(np.uint8)
+                    self.save_as_png(png_data, png_path)
                     
     def process_all_conditions(self, root_dir, output_base_png, output_base_npy):
         """
@@ -129,21 +162,13 @@ class DICOMProcessor:
         recreating folder structure in output directories
         """
         for root, dirs, files in os.walk(root_dir):
-            dicom_files = [f for f in files if f.endswith('.dcm')]
-            
-            if not dicom_files:
-                continue
-            
+            if not any(f.endswith('.dcm') for f in files): continue
             
             relative_path = os.path.relpath(root, root_dir)
+            target_png = os.path.join(output_base_png, relative_path)
+            target_npy = os.path.join(output_base_npy, relative_path)
             
-            target_png_dir = os.path.join(output_base_png, relative_path)
-            target_npy_dir = os.path.join(output_base_npy, relative_path)
+            os.makedirs(target_png, exist_ok=True)
+            os.makedirs(target_npy, exist_ok=True)
             
-            os.makedirs(target_png_dir, exist_ok=True)
-            os.makedirs(target_npy_dir, exist_ok=True)
-            
-            logger.info(f"Processing folder: {relative_path}")
-            
-            self.batch_conversion(root, target_png_dir, conversion_type="png")
-            self.batch_conversion(root, target_npy_dir, conversion_type="npy")
+            self.batch_conversion(root, output_png_dir=target_png, output_npy_dir=target_npy)
