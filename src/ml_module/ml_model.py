@@ -123,10 +123,10 @@ def train_model(
             f"LR: {optimizer.param_groups[0]['lr']:.6f}"
         )
         
-        if val_acc > best_val_acc:
+        if val_acc >= best_val_acc:
             best_val_acc = val_acc
             best_model_state = model.state_dict().copy()
-            logger.info(f"New best model found at epoch {epoch+1} with Val Acc: {val_acc:.2f}%")
+            logger.info(f"New model found at epoch {epoch+1} with Val Acc: {val_acc:.2f}%")
     
     if best_model_state:
         model.load_state_dict(best_model_state)
@@ -192,7 +192,7 @@ def start_model_pipeline(
     model.to(device)
 
     # Freezing
-    for name, param in model.model.parameters():
+    for name, param in model.model.named_parameters():
         if "layer3" in name or "layer4" in name or "fc" in name or "stem.0" in name:
             param.requires_grad = True
         else:
