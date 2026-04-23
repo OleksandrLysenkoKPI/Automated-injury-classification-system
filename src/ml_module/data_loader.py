@@ -1,9 +1,11 @@
 from ..logger_module.logger import CustomLogger
 from .ml_utils import get_dataset_paths, verify_dataset_processing
 from torch.utils.data import Dataset, DataLoader
+import torch.nn.functional as F
+import torchvision.transforms.functional as TF
 import numpy as np
 import torch
-import torch.nn.functional as F
+import random
 from pathlib import Path
 
 logger = CustomLogger("DataLoader_log")
@@ -72,7 +74,17 @@ class Knee3DPathologyDataset(Dataset):
             tensor = F.pad(tensor, (w_start, w_end, 0, 0, 0, 0), mode='constant', value=0)
         
         return tensor
-        
+    
+    def _apply_augmentations(self, tensor: torch.Tensor) -> torch.Tensor:
+        if random.random() > 0.5:
+            tensor = torch.flip(tensor, dims=[-1]) # -1 = W
+     
+        if random.random() > 0.5:
+            angle = random.uniform(-15, 15)
+            tensor = TF.rotate(tensor, angle)
+
+        return tensor
+    
     def __getitem__(self, index):
         file_path, label = self.samples[index]
 
@@ -84,6 +96,9 @@ class Knee3DPathologyDataset(Dataset):
             temp = F.interpolate(tensor, size=(current_depth, 224, 224), mode='trilinear', align_corners=False)
             tensor = temp.squeeze(0)
             tensor = self._resize_3d(tensor, self.target_shape)
+            
+            if self.is_train:
+                tensor = self._apply_augmentations(tensor)
             
             if tensor.max() == 0:
                 logger.warning(f"Warning: Sample {file_path} is empty after processing!")
@@ -101,24 +116,22 @@ def load_dataset(target_shape: tuple[int, int, int], batch_size: int = 4, load_a
     try:
         paths = get_dataset_paths()
         
-        if load_augmented:
-            train_dataset = Knee3DPathologyDataset(paths["train_augmented"], target_shape=target_shape, is_train=True)
-            val_dataset = Knee3DPathologyDataset(paths["val"], target_shape=target_shape, is_train=True)
-            val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-        else:
-            train_dataset =  Knee3DPathologyDataset(paths["train"], target_shape=target_shape, is_train=True)
+        train_path = paths["train_augmented"] if load_augmented else paths["train"]
+        
+        train_dataset = Knee3DPathologyDataset(train_path, target_shape=target_shape, is_train=True)
+        val_dataset = Knee3DPathologyDataset(paths["val"], target_shape=target_shape, is_train=False)
         test_dataset = Knee3DPathologyDataset(paths["test"], target_shape=target_shape, is_train=False)
         
         class_names = train_dataset.classes
         
-        verify_dataset_processing(train_dataset, sample_idx=967)
+        # verify_dataset_processing(train_dataset, sample_idx=967)
         
         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
         test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
         logger.info(f"Loaded {len(class_names)} classes: {class_names}")
-        logger.info(f"Mapping: {train_dataset.class_to_idx}")
-        
+
         logger.info("Dataset was loaded successfully")
         return train_loader,val_loader, test_loader, class_names
     except Exception as e:
