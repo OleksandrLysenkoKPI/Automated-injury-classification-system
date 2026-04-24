@@ -3,12 +3,51 @@ import matplotlib.pyplot as plt
 import os
 import shutil
 import random
+import torch
+import torch.nn.functional as F
 from pathlib import Path
 from scipy.ndimage import zoom
 from skimage.restoration import denoise_wavelet, estimate_sigma
 from ..logger_module.logger import CustomLogger
 
 logger = CustomLogger("Imaging_utils_log")
+
+def resize_3d_tensor(tensor: torch.Tensor, target_shape: tuple[int, int, int]) -> torch.Tensor:
+        c, d, h, w = tensor.shape
+        td, th, tw = target_shape
+        
+        def get_coords(current, target):
+            if current == target:
+                return 0, 0, None
+            elif current > target:
+                start = (current - target) // 2
+                return start, start + target, True # True = crop
+            else:
+                pad_total = target - current
+                pad_before = pad_total // 2
+                pad_after = pad_total - pad_before
+                return pad_before, pad_after, False # False = pad
+        
+        d_start, d_end, d_crop = get_coords(d, td)
+        h_start, h_end, h_crop = get_coords(h, th)
+        w_start, w_end, w_crop = get_coords(w, tw)
+        
+        if d_crop:
+            tensor = tensor[:, d_start:d_end, :, :]
+        else:
+            tensor = F.pad(tensor, (0, 0, 0, 0, d_start, d_end), mode='constant', value=0)
+
+        if h_crop:
+            tensor = tensor[:, :, h_start:h_end, :]
+        else:
+            tensor = F.pad(tensor, (0, 0, h_start, h_end, 0, 0), mode='constant', value=0)
+            
+        if w_crop:
+            tensor = tensor[:, :, :, w_start:w_end]
+        else:
+            tensor = F.pad(tensor, (w_start, w_end, 0, 0, 0, 0), mode='constant', value=0)
+        
+        return tensor
 
 def get_knee_bbox(data, threshold=0.01):
     coords = np.argwhere(data > threshold)
