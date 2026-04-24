@@ -111,7 +111,7 @@ class Knee3DPathologyDataset(Dataset):
             raise e
 
 
-def load_dataset(target_shape: tuple[int, int, int], batch_size: int = 4, load_augmented: bool = False):
+def load_dataset(target_shape: tuple[int, int, int], batch_size: int = 4, load_augmented: bool = False, verify_processing: bool = False, img_idx: int = 1):
     """Loads dataset and returns DataLoader objects with list of found classes"""
     try:
         paths = get_dataset_paths()
@@ -124,7 +124,7 @@ def load_dataset(target_shape: tuple[int, int, int], batch_size: int = 4, load_a
         
         class_names = train_dataset.classes
         
-        # verify_dataset_processing(train_dataset, sample_idx=967)
+        if verify_processing: verify_dataset_processing(train_dataset, sample_idx=img_idx)
         
         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
         val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
