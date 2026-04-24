@@ -49,7 +49,7 @@ class CustomLogger:
         
     def warning(self, message: str):
         """Log WARNING messages"""
-        self.logger.warning(message, stacklevel=2, exc_info=True)
+        self.logger.warning(message, stacklevel=2)
 
 
 if __name__ == "__main__":
