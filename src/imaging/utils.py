@@ -50,41 +50,61 @@ def wavelet_denoising_3d(data):
     
     return denoised_data.astype(np.float32)
 
-# TODO: Rewrite to split data into:
-#       1. test and train 
-#       2. split validation data from train
-def split_data(root_path: str | Path, train_ratio: float = 0.8):
+def split_data(root_path: str | Path, train_ratio: float = 0.7, val_ratio: float = 0.15):
+    """
+    Splits data into Train, Validation and Test sets.
+    The remaining ratio (1 - train_ratio - val_ratio) goes to Test.
+    """
     logger.info("Start data splitting process")
     root_path = Path(root_path)
-    base_dir = root_path.parent
+    data_dir = root_path.parents[1] 
+    prepared_data_path = data_dir / "prepared_data"
     
-    train_split_path = base_dir / "train_split"
-    val_path = base_dir / "val"
+    split_paths = {
+        "train": prepared_data_path / "train",
+        "val": prepared_data_path / "val",
+        "test": prepared_data_path / "test",
+    }
+    
+    test_ratio = 1.0 - train_ratio - val_ratio
+    if test_ratio < 0:
+        raise ValueError("Sum of train_ratio and val_ratio cannot exceed 1.0")
     
     try:
+        prepared_data_path.mkdir(exist_ok=True)
+        
         for cls_folder in root_path.iterdir():
             if not cls_folder.is_dir():
                 continue
             
-            (train_split_path / cls_folder.name).mkdir(parents=True, exist_ok=True)
-            (val_path / cls_folder.name).mkdir(parents=True, exist_ok=True)
+            for path in split_paths.values():
+                (path / cls_folder.name).mkdir(parents=True, exist_ok=True)
             
             files = list(cls_folder.glob("*.npy"))
             random.shuffle(files)
             
-            split_idx = int(len(files) * train_ratio)
-            train_files = files[:split_idx]
-            val_files = files[split_idx:]
+            n_total = len(files)
+            idx_train = int(n_total * train_ratio)
+            idx_val = int(n_total * (train_ratio + val_ratio))
             
-            for f in train_files:
-                shutil.copy(f, train_split_path / cls_folder.name / f.name)
-            for f in val_files:
-                shutil.copy(f, val_path / cls_folder.name / f.name)
+            subsets = {
+                "train": files[:idx_train],
+                "val": files[idx_train:idx_val],
+                "test": files[idx_val:]
+            }
+            
+            for key, subset_files in subsets.items():
+                dest_folder = split_paths[key] / cls_folder.name
+                for f in subset_files:
+                    shutil.copy(f, dest_folder / f.name)
+                
+                logger.info(f"Class {cls_folder.name}: {len(subset_files)} files copied to {key}")
     except Exception as e:
         logger.error(f"Error occurred during data splitting: {e}")
+        raise
     
-    logger.info(f"Split complete. Train: {train_split_path}, Val: {val_path}")
-    return train_split_path, val_path
+    logger.info(f"Split complete. Prepared data located at: {prepared_data_path}")
+    return split_paths["train"], split_paths["val"], split_paths["test"]
 
 def add_noise(data: np.ndarray, standard: float) -> np.ndarray:
     noise = np.random.normal(0, standard, data.shape).astype(np.float32)
