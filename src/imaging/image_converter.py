@@ -2,6 +2,7 @@ import pydicom
 from pydicom.pixels.processing import apply_rescale
 import numpy as np
 from PIL import Image
+from pathlib import Path
 import os
 from .utils import wavelet_denoising_3d, resample_3d, get_knee_bbox
 from ..logger_module.logger import CustomLogger
@@ -97,14 +98,10 @@ class DICOMProcessor:
         """Applies the full preprocessing pipeline to the current DICOM object."""
         try:
             data = self.pixels_hu
-            
-            logger.info("Applying wavelet denoising...")
             data = wavelet_denoising_3d(data)
             
             logger.info(f"Resampling from {self.spacing} to {target_spacing}...")
             data = resample_3d(data, self.spacing, target_spacing=target_spacing)
-            
-            logger.info("Applying Bounding Box crop...")
             data = get_knee_bbox(data, threshold=0.01)
         
             normalized_data = self.get_normalized(data, target_range=target_range)
@@ -113,7 +110,6 @@ class DICOMProcessor:
             logger.error(f"Pipeline processing failed: {e}")
         return None
 
-# TODO: Fix save folder structure
     def save_as_png(self, data, output_path):
         """Slices the volume and saves as PNGs."""
         data = np.squeeze(data)
@@ -129,15 +125,15 @@ class DICOMProcessor:
             return True
         return False
     
-    def batch_conversion(self, input_dir, output_png_dir=None, output_npy_dir=None):
+    def batch_conversion(self, input_dir, output_png_dir=None, output_npy_dir=None, start_idx=1):
         """
-        Iterates through a folder and converts all DICOM files.
-        conversion_type: 'png', 'npy', or 'both'
+        Iterates through a folder and converts all DICOM files to png and npy.
         """
         files = [f for f in os.listdir(input_dir) if f.endswith('.dcm')]
+        current_idx = start_idx
+        
         for filename in files:
             file_path = os.path.join(input_dir, filename)
-            base_name = os.path.splitext(filename)[0]
             
             if self.load_file(file_path):
                 z_spacing, _, _ = self.spacing
@@ -149,6 +145,8 @@ class DICOMProcessor:
                 if processed_hu is None:
                     continue
                 
+                base_name = f"{current_idx:04d}"
+                
                 if output_npy_dir:
                     npy_path = os.path.join(output_npy_dir, f"{base_name}.npy")
                     np.save(npy_path, processed_hu)
@@ -157,20 +155,39 @@ class DICOMProcessor:
                     png_path = os.path.join(output_png_dir, f"{base_name}.png")
                     png_data = (processed_hu * 255).astype(np.uint8)
                     self.save_as_png(png_data, png_path)
+                
+                current_idx += 1
+        
+        return current_idx
                     
     def process_all_conditions(self, root_dir, output_base_png, output_base_npy):
         """
         Iterates through all the branch of a specified path and converts files,
         recreating folder structure in output directories
         """
-        for root, dirs, files in os.walk(root_dir):
-            if not any(f.endswith('.dcm') for f in files): continue
+        root_path = Path(root_dir)
+        conditions = {d.name for d in root_path.iterdir() if d.is_dir()}
+        
+        for condition in conditions:
+            condition_path = root_path / condition
             
-            relative_path = os.path.relpath(root, root_dir)
-            target_png = os.path.join(output_base_png, relative_path)
-            target_npy = os.path.join(output_base_npy, relative_path)
-            
+            target_png = os.path.join(output_base_png, condition)
+            target_npy = os.path.join(output_base_npy, condition)
             os.makedirs(target_png, exist_ok=True)
             os.makedirs(target_npy, exist_ok=True)
             
-            self.batch_conversion(root, output_png_dir=target_png, output_npy_dir=target_npy)
+            logger.info(f"Processing condition: {condition}")
+            
+            file_counter = 1
+            
+            for current_root, _, files in os.walk(condition_path):
+                dcm_files = [f for f in files if f.endswith('.dcm')]
+                if dcm_files:
+                    file_counter = self.batch_conversion(
+                        current_root,
+                        output_png_dir=target_png,
+                        output_npy_dir=target_npy,
+                        start_idx=file_counter
+                    )
+                
+        logger.info(f"Finished {condition}. Total files {file_counter-1}")
