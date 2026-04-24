@@ -1,10 +1,12 @@
 import pydicom
 from pydicom.pixels.processing import apply_rescale
 import numpy as np
+import torch
+import torch.nn.functional as F
 from PIL import Image
 from pathlib import Path
 import os
-from .utils import wavelet_denoising_3d, resample_3d, get_knee_bbox
+from .utils import wavelet_denoising_3d, resample_3d, get_knee_bbox, resize_3d_tensor
 from ..logger_module.logger import CustomLogger
 
 logger = CustomLogger("Imaging_log")
@@ -94,7 +96,7 @@ class DICOMProcessor:
         
         return normalized.astype(np.float32)
     
-    def get_processed_volume(self, target_range=(0, 1), target_spacing=(1.0, 1.0, 1.0)):
+    def get_processed_volume(self, target_range=(0, 1), target_spacing=(1.0, 1.0, 1.0), target_shape=(64, 160, 160)):
         """Applies the full preprocessing pipeline to the current DICOM object."""
         try:
             data = self.pixels_hu
@@ -103,8 +105,16 @@ class DICOMProcessor:
             logger.info(f"Resampling from {self.spacing} to {target_spacing}...")
             data = resample_3d(data, self.spacing, target_spacing=target_spacing)
             data = get_knee_bbox(data, threshold=0.01)
+
+            tensor = torch.from_numpy(data).float().unsqueeze(0).unsqueeze(0)
+            
+            current_depth = tensor.shape[2]
+            tensor = F.interpolate(tensor, size=(current_depth, 224, 224), mode='trilinear')
         
-            normalized_data = self.get_normalized(data, target_range=target_range)
+            tensor = resize_3d_tensor(tensor.squeeze(0), target_shape)
+            final_data = tensor.squeeze(0).numpy()
+            
+            normalized_data = self.get_normalized(final_data, target_range=target_range)
             return normalized_data
         except Exception as e:
             logger.error(f"Pipeline processing failed: {e}")

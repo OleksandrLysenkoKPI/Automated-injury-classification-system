@@ -38,43 +38,6 @@ class Knee3DPathologyDataset(Dataset):
     def __len__(self):
         return len(self.samples)
     
-    def _resize_3d(self, tensor: torch.Tensor, target_shape: tuple[int, int, int]) -> torch.Tensor:
-        c, d, h, w = tensor.shape
-        td, th, tw = target_shape
-        
-        def get_coords(current, target):
-            if current == target:
-                return 0, 0, None
-            elif current > target:
-                start = (current - target) // 2
-                return start, start + target, True # True = crop
-            else:
-                pad_total = target - current
-                pad_before = pad_total // 2
-                pad_after = pad_total - pad_before
-                return pad_before, pad_after, False # False = pad
-        
-        d_start, d_end, d_crop = get_coords(d, td)
-        h_start, h_end, h_crop = get_coords(h, th)
-        w_start, w_end, w_crop = get_coords(w, tw)
-        
-        if d_crop:
-            tensor = tensor[:, d_start:d_end, :, :]
-        else:
-            tensor = F.pad(tensor, (0, 0, 0, 0, d_start, d_end), mode='constant', value=0)
-
-        if h_crop:
-            tensor = tensor[:, :, h_start:h_end, :]
-        else:
-            tensor = F.pad(tensor, (0, 0, h_start, h_end, 0, 0), mode='constant', value=0)
-            
-        if w_crop:
-            tensor = tensor[:, :, :, w_start:w_end]
-        else:
-            tensor = F.pad(tensor, (w_start, w_end, 0, 0, 0, 0), mode='constant', value=0)
-        
-        return tensor
-    
     def _apply_augmentations(self, tensor: torch.Tensor) -> torch.Tensor:
         if random.random() > 0.5:
             tensor = torch.flip(tensor, dims=[-1]) # -1 = W
@@ -89,19 +52,11 @@ class Knee3DPathologyDataset(Dataset):
         file_path, label = self.samples[index]
 
         try:
-            data = np.load(file_path)
-            tensor = torch.from_numpy(data).float().unsqueeze(0).unsqueeze(0) # [D, H, W] -> [B=1, C=1, D, H,W]
-            
-            current_depth = tensor.shape[2]
-            temp = F.interpolate(tensor, size=(current_depth, 224, 224), mode='trilinear', align_corners=False)
-            tensor = temp.squeeze(0)
-            tensor = self._resize_3d(tensor, self.target_shape)
+            data = np.load(file_path, mmap_mode='r')
+            tensor = torch.from_numpy(data.copy()).float().unsqueeze(0).unsqueeze(0) # [D, H, W] -> [B=1, C=1, D, H,W]
             
             if self.is_train:
                 tensor = self._apply_augmentations(tensor)
-            
-            if tensor.max() == 0:
-                logger.warning(f"Warning: Sample {file_path} is empty after processing!")
             
             tensor = torch.clamp(tensor, 0.0, 1.0)
             
@@ -126,7 +81,7 @@ def load_dataset(target_shape: tuple[int, int, int], batch_size: int = 4, load_a
         
         if verify_processing: verify_dataset_processing(train_dataset, sample_idx=img_idx)
         
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=6, pin_memory=True, prefetch_factor=2, persistent_workers=True)
         val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
         test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
