@@ -31,9 +31,10 @@ if __name__ == "__main__":
     
     # High Fidelity (64, 160, 160), Standard Balanced (48, 224, 224), Deep MRI (96, 128, 128)
     target_shape = (64, 160, 160)
+    target_spacing = (1.0, 1.0, 1.0)
     
     if choice_input == 1:
-        processor.process_all_conditions(dataset_folder, output_png_folder, output_npy_folder)
+        processor.process_all_conditions(dataset_folder, output_png_folder, output_npy_folder, target_shape=target_shape, target_spacing=target_spacing)
     elif choice_input == 2:
         verify_npy_conversion(processor=processor, dicom_path=test_dicom_image, npy_path=test_numpy_image)
     elif choice_input == 3:
@@ -45,7 +46,7 @@ if __name__ == "__main__":
     elif choice_input == 6:
         load_dataset(target_shape=target_shape, batch_size=4, load_augmented=True, verify_processing=True, img_idx=10)
     elif choice_input == 7:
-        start_model_pipeline(epochs=50, target_shape=target_shape, save_file_name="knee_3d_pathology_model", use_augmented=True)
+        start_model_pipeline(epochs=50, batch_size=8, target_shape=target_shape, save_file_name="knee_3d_pathology_model", use_augmented=True)
     else:
         print("Exiting program...")
         sys.exit(0)

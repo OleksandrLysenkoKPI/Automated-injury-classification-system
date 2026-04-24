@@ -135,7 +135,8 @@ class DICOMProcessor:
             return True
         return False
     
-    def batch_conversion(self, input_dir, output_png_dir=None, output_npy_dir=None, start_idx=1):
+    def batch_conversion(self, input_dir, output_png_dir=None, output_npy_dir=None, 
+                         start_idx: int = 1, target_shape: tuple[int, int, int] = (64, 160, 160), target_spacing: tuple[float, float, float]=(1.0, 1.0, 1.0)):
         """
         Iterates through a folder and converts all DICOM files to png and npy.
         """
@@ -151,12 +152,12 @@ class DICOMProcessor:
                     logger.warning(f"Skipping survey/scout scan: {filename}")
                     continue
                 
-                processed_hu = self.get_processed_volume(target_range=(0, 1))
+                processed_hu = self.get_processed_volume(target_range=(0, 1), target_shape=target_shape, target_spacing=target_spacing)
                 if processed_hu is None:
                     continue
                 
                 base_name = f"{current_idx:04d}"
-                
+
                 if output_npy_dir:
                     npy_path = os.path.join(output_npy_dir, f"{base_name}.npy")
                     np.save(npy_path, processed_hu)
@@ -170,7 +171,7 @@ class DICOMProcessor:
         
         return current_idx
                     
-    def process_all_conditions(self, root_dir, output_base_png, output_base_npy):
+    def process_all_conditions(self, root_dir, output_base_png, output_base_npy, target_shape: tuple[int, int, int] = (64, 160, 160), target_spacing: tuple[float, float, float]=(1.0, 1.0, 1.0)):
         """
         Iterates through all the branch of a specified path and converts files,
         recreating folder structure in output directories
@@ -180,16 +181,15 @@ class DICOMProcessor:
         
         for condition in conditions:
             condition_path = root_path / condition
-            
             target_png = os.path.join(output_base_png, condition)
             target_npy = os.path.join(output_base_npy, condition)
+            
             os.makedirs(target_png, exist_ok=True)
             os.makedirs(target_npy, exist_ok=True)
             
             logger.info(f"Processing condition: {condition}")
             
             file_counter = 1
-            
             for current_root, _, files in os.walk(condition_path):
                 dcm_files = [f for f in files if f.endswith('.dcm')]
                 if dcm_files:
@@ -197,7 +197,9 @@ class DICOMProcessor:
                         current_root,
                         output_png_dir=target_png,
                         output_npy_dir=target_npy,
-                        start_idx=file_counter
+                        start_idx=file_counter,
+                        target_shape=target_shape,
+                        target_spacing=target_spacing
                     )
-                
+
         logger.info(f"Finished {condition}. Total files {file_counter-1}")
