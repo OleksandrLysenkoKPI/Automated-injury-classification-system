@@ -57,11 +57,16 @@ def get_dataset_paths():
         "test": dataset_path / "test"
     }
 
-def numpy_examinator(numpy_folder_root: str | Path):
+def numpy_examiner(numpy_folder_root: str | Path, print_paths: bool = False):
     """Prints grouped shapes and relative paths of all .npy files in a folder tree"""
+    def print_file_paths(paths):
+        print("Path to files:")
+        for p in paths:
+            print(p)
+    
     shape_map = {}
     
-    for root, dirs, files in os.walk(numpy_folder_root):
+    for root, _, files in os.walk(numpy_folder_root):
         for f in files:
             if f.endswith('.npy'):
                 full_path = os.path.join(root, f)
@@ -79,10 +84,7 @@ def numpy_examinator(numpy_folder_root: str | Path):
         
     for shape, paths in shape_map.items():
         print(f"Shape {list(shape)}")
-        print("Path to files:")
-        for p in paths:
-            print(p)
-        print()
+        if print_paths: print_file_paths(paths)
 
 def organize_dataset(source_root, destination_root, train_ratio=0.8):
     conditions_list = [d for d in os.listdir(source_root) if os.path.isdir(os.path.join(source_root, d))]
