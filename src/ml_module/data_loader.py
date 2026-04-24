@@ -53,7 +53,7 @@ class Knee3DPathologyDataset(Dataset):
 
         try:
             data = np.load(file_path, mmap_mode='r')
-            tensor = torch.from_numpy(data.copy()).float().unsqueeze(0).unsqueeze(0) # [D, H, W] -> [B=1, C=1, D, H,W]
+            tensor = torch.from_numpy(data.copy()).float().unsqueeze(0) # [D, H, W] -> [C, D, H, W]
             
             if self.is_train:
                 tensor = self._apply_augmentations(tensor)
