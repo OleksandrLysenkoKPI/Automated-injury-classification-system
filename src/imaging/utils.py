@@ -159,7 +159,7 @@ def augment_and_save_dataset(root_path: str | Path):
                
     logger.info(f"Augmentation finished. New augmented dataset location: {output_base}")
             
-
+# TODO: Rewrite to work woth transformed images 
 def verify_npy_conversion(processor, dicom_path, npy_path):
     """Compares original DICOM with loaded NumPy file"""
     try:
