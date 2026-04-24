@@ -52,8 +52,8 @@ class Knee3DPathologyDataset(Dataset):
         file_path, label = self.samples[index]
 
         try:
-            data = np.load(file_path, mmap_mode='r')
-            tensor = torch.from_numpy(data.copy()).float().unsqueeze(0) # [D, H, W] -> [C, D, H, W]
+            data = np.load(file_path)
+            tensor = torch.from_numpy(data).float().unsqueeze(0).clone() # [D, H, W] -> [C, D, H, W]
             
             if self.is_train:
                 tensor = self._apply_augmentations(tensor)
@@ -81,7 +81,7 @@ def load_dataset(target_shape: tuple[int, int, int], batch_size: int = 4, load_a
         
         if verify_processing: verify_dataset_processing(train_dataset, sample_idx=img_idx)
         
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=6, pin_memory=True, prefetch_factor=2, persistent_workers=True)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True, prefetch_factor=2, persistent_workers=True)
         val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
         test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
