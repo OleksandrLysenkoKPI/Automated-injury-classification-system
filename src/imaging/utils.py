@@ -153,7 +153,7 @@ def augment_and_save_dataset(root_path: str | Path):
     """Augments given NumPy data and saves it in a separate folder. Includes several augmentations:
     1. Original.
     2. Horizontal flip.
-    3. 90 degree rotation.
+    3. Brightness Jitter.
     4. Noise.<br>
     And their respective combinations.
 
@@ -164,7 +164,7 @@ def augment_and_save_dataset(root_path: str | Path):
     output_base = root_path.parent / "train_augmented"
     output_base.mkdir(parents=True, exist_ok=True)
     
-    for root, dirs, files in os.walk(root_path):
+    for root, _, files in os.walk(root_path):
         npy_files = [f for f in files if f.endswith('.npy')]
             
         if not npy_files:
@@ -181,8 +181,6 @@ def augment_and_save_dataset(root_path: str | Path):
                 file_path = Path(root) / file_name
                 data: np.ndarray = np.load(file_path)
                 base_name = Path(file_name).stem
-
-                noise_standard = 0.01 * (data.max() - data.min())
                 
                 # --- Basic ---
                 # 1. Original
@@ -192,26 +190,34 @@ def augment_and_save_dataset(root_path: str | Path):
                 flipped = np.flip(data, axis=-1)
                 np.save(target_folder / f"{base_name}_flipped.npy", flipped)
                 
-                # 3. 90 deg Rotation
-                rotated = np.rot90(data, k=1, axes=(-2, -1))
-                np.save(target_folder / f"{base_name}_rotated.npy", rotated)
+                # 3. Brightness Jitter
+                bright = np.clip(data * 1.15, 0, 1)
+                dark = np.clip(data * 0.85, 0, 1)
+                np.save(target_folder / f"{base_name}_bright.npy", bright)
+                np.save(target_folder / f"{base_name}_dark.npy", dark)
                 
                 # 4. Noise
-                np.save(target_folder / f"{base_name}_noised.npy", add_noise(data, noise_standard))
+                noise_lvl = 0.005 * (data.max() - data.min())
+                noised_orig = add_noise(data, noise_lvl)
+                np.save(target_folder / f"{base_name}_noised.npy", noised_orig)
                 
                 # --- Combinations ---
-                # 1. Flip + Rotate
-                f_r = np.rot90(flipped, k=1, axes=(-2, -1))
-                np.save(target_folder / f"{base_name}_flip_rotation.npy", f_r)
+                # 1. Flip + Brightness
+                flipped_bright = np.clip(flipped * 1.15, 0, 1)
+                flipped_dark = np.clip(flipped * 0.85, 0, 1)
+                np.save(target_folder / f"{base_name}_flipped_bright.npy", flipped_bright)
+                np.save(target_folder / f"{base_name}_flipped_dark.npy", flipped_dark)
                 
                 # 2. Flip + Noise
-                np.save(target_folder / f"{base_name}_noise_flip.npy", add_noise(flipped, noise_standard))
+                np.save(target_folder / f"{base_name}_flipped_noised.npy", add_noise(flipped, noise_lvl))
                 
-                # 3. Rotate + Noise
-                np.save(target_folder / f"{base_name}_noise_rotation.npy", add_noise(rotated, noise_standard))
+                # 3. Brightness + Noise
+                np.save(target_folder / f"{base_name}_bright_noised.npy", add_noise(bright, noise_lvl))
+                np.save(target_folder / f"{base_name}_dark_noised.npy", add_noise(dark, noise_lvl))
                 
                 # 4. All
-                np.save(target_folder / f"{base_name}_all.npy", add_noise(f_r, noise_standard))
+                heavy = add_noise(np.clip(flipped * 0.85, 0, 1), noise_lvl)
+                np.save(target_folder / f"{base_name}_heavy.npy", heavy)
             except Exception as e:
                 logger.error(f"Failed to process {file_path.name}: {e}")
                 continue
