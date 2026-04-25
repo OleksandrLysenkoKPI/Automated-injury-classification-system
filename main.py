@@ -34,7 +34,7 @@ if __name__ == "__main__":
     processor = DICOMProcessor()
     
     # High Fidelity (64, 160, 160), Standard Balanced (48, 224, 224), Deep MRI (96, 128, 128)
-    target_shape = (64, 160, 160)
+    target_shape = (48, 224, 224)
     target_spacing = (1.0, 1.0, 1.0)
     
     while True:
@@ -61,7 +61,7 @@ if __name__ == "__main__":
             elif choice_input == 6:
                 load_dataset(target_shape=target_shape, batch_size=4, load_augmented=True, verify_processing=True, img_idx=10)
             elif choice_input == 7:
-                start_model_pipeline(epochs=50, batch_size=8, target_shape=target_shape, save_file_name="knee_3d_pathology_model", use_augmented=True)
+                start_model_pipeline(epochs=30, batch_size=8, target_shape=target_shape, save_file_name="knee_3d_pathology_model", use_augmented=True)
             elif choice_input == 0:
                 print("Exiting program...")
                 break

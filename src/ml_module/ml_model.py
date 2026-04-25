@@ -1,9 +1,10 @@
 from typing import Any
-
+import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
+import torchvision.transforms.functional as TF
 from torch.utils.data import DataLoader
 from torch.nn.modules.loss import _Loss
 from torch.optim import Optimizer
@@ -11,6 +12,7 @@ from torch.optim.lr_scheduler import LRScheduler
 from torch.amp.autocast_mode import autocast
 from torch.amp.grad_scaler import GradScaler
 from torchvision.models.video import r3d_18, R3D_18_Weights
+import torch.backends.cudnn as cudnn
 from ..logger_module.logger import CustomLogger
 from .data_loader import load_dataset
 from sklearn.metrics import classification_report
@@ -36,23 +38,23 @@ class KneeResNet(nn.Module):
         )
         
         num_ftrs = self.model.fc.in_features
-        self.model.fc = nn.Linear(num_ftrs, num_classes)
         
-        self.dropout = nn.Dropout(p=0.6)
+        self.model.fc = nn.Identity() # type: ignore
+        
+        self.custom_head = nn.Sequential(
+            nn.Linear(num_ftrs, 256),
+            nn.BatchNorm1d(256),
+            nn.LeakyReLU(0.1),
+            nn.Dropout(p=0.6),
+            nn.Linear(256, num_classes)
+        )
     
     def forward(self, x: torch.Tensor):
-        x = self.model.stem(x)
-        x = self.model.layer1(x)
-        x = self.model.layer2(x)
-        x = self.model.layer3(x)
-        x = self.model.layer4(x)
-        x = self.model.avgpool(x)
-        x = torch.flatten(x, 1)
-        
-        x = self.dropout(x)
-        x = self.model.fc(x)
-        
-        return x
+       x = self.model(x)
+       
+       x = self.custom_head(x)
+       
+       return x
 
 class EarlyStopping:
     def __init__(self, patience: int = 7, min_delta: float = 0.0, verbose=True):
@@ -83,7 +85,7 @@ class EarlyStopping:
         
 
 def train_model(
-    model: nn.Module,
+    model: Any,
     train_loader: DataLoader,
     val_loader: DataLoader,
     criterion: _Loss,
@@ -95,16 +97,27 @@ def train_model(
     scaler = GradScaler("cuda")
     best_val_acc = 0.0
     best_model_state = None
+    best_val_loss = float('inf')
     
     early_stopping = EarlyStopping(patience=7, verbose=True)
     
-    logger.info(f"Start of model training (AMP enabled) on device: {device}")
+    logger.info(f"Start training. Stage 1: Training only FC layer.")
     
     for epoch in range(epochs):
-        if epoch == 10:
-            logger.info("Unfreezing layers for fine-tuning.")
-            for param in model.parameters():
-                param.requires_grad = True
+        if epoch == 15:
+            logger.info("Stage 2: Unfreezing backbone layers (layer3, layer4, stem.0) for fine-tuning.")
+            new_params = []
+            
+            for name, param in model.model.named_parameters():
+                if "layer3" in name or "layer4" in name or "stem.0" in name:
+                    param.requires_grad = True
+                    new_params.append(param)
+            
+            optimizer.add_param_group({'params': new_params, 'lr': 1e-5, 'weight_decay': 0.1})
+            
+            current_lr = optimizer.param_groups[0]['lr']
+            logger.info(f"Learning rates reset: Head LR: {current_lr}, Backbone LR: 1e-5")
+                
         
         model.train()
         train_loss, train_correct, train_total = 0.0, 0, 0
@@ -112,11 +125,20 @@ def train_model(
             images: torch.Tensor
             labels: torch.Tensor
             
-            images, labels = images.to(device), labels.to(device)
-            optimizer.zero_grad()
+            images, labels = images.to(device, non_blocking=True), labels.to(device, non_blocking=True)
+            images = images + torch.randn_like(images) * 0.005 # micro noise for variability
+            optimizer.zero_grad(set_to_none=True)
             
             # Forward pass with autocast
             with autocast(device_type="cuda"):
+                # if model.training:
+                #     if random.random() > 0.5:
+                #         images = torch.flip(images, dims=[-1]) # -1 = W
+                        
+                # if random.random() > 0.5:
+                #     angle = random.uniform(-15, 15)
+                #     images = TF.rotate(images, angle)
+                
                 outputs = model(images)
                 loss: torch.Tensor = criterion(outputs, labels)
             
@@ -156,11 +178,17 @@ def train_model(
             f"LR: {optimizer.param_groups[0]['lr']:.6f}"
         )
         
-        if val_acc >= best_val_acc:
+        if val_acc > best_val_acc:
             best_val_acc = val_acc
+            best_val_loss = avg_val_loss
             best_model_state = model.state_dict().copy()
-            logger.info(f"New model found at epoch {epoch+1} with Val Acc: {val_acc:.2f}%")
-
+            logger.info(f"New best model (Acc improved): Epoch {epoch+1} | Acc: {val_acc:.2f}%")
+        
+        elif val_acc == best_val_acc and avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            best_model_state = model.state_dict().copy()
+            logger.info(f"New best model (Loss improved): Epoch {epoch+1} | Loss: {avg_val_loss:.4f}")
+        
         if epoch > 15:
             early_stopping(avg_val_loss)
             if early_stopping.early_stop:
@@ -211,8 +239,8 @@ def evaluate_model(
 
 def start_model_pipeline(
     epochs: int = 30, 
-    batch_size: int = 4, 
-    target_shape: tuple[int, int, int] = (32, 256, 256), 
+    batch_size: int = 8, 
+    target_shape: tuple[int, int, int] = (32, 128, 128), 
     save_file_name: str = "knee_3d_pathology_model",
     use_augmented: bool = True
 ):
@@ -224,24 +252,31 @@ def start_model_pipeline(
         target_shape (tuple[int, int, int], optional): Defaults to (32, 256, 256).
         save_file_name (str, optional): Defaults to "knee_3d_pathology_model".
     """
+    cudnn.benchmark = True
     train_loader, val_loader, test_loader, classes = load_dataset(target_shape=target_shape, batch_size=batch_size, load_augmented=use_augmented)
 
     model = KneeResNet(num_classes=len(classes))
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda")
     model.to(device)
 
     # Freezing
-    for name, param in model.model.named_parameters():
-        if "layer3" in name or "layer4" in name or "fc" in name or "stem.0" in name:
-            param.requires_grad = True
-        else:
-            param.requires_grad = False
+    for param in model.parameters():
+        param.requires_grad = False
+    
+    for param in model.custom_head.parameters():
+        param.requires_grad = True
+    
+    # for name, param in model.model.named_parameters():
+    #     if "layer3" in name or "layer4" in name or "fc" in name or "stem.0" in name:
+    #         param.requires_grad = True
+    #     else:
+    #         param.requires_grad = False
     
     trainable_params = [p for p in model.parameters() if p.requires_grad]
 
     weights = torch.tensor([1.5, 2.5, 1.5, 1.5, 0.8, 1.2]).to(device)
     criterion = nn.CrossEntropyLoss(weight=weights, label_smoothing=0.1)
-    optimizer = optim.AdamW(trainable_params, lr=3e-4, weight_decay=1e-2)
+    optimizer = optim.AdamW(trainable_params, lr=1e-3, weight_decay=0.05)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=epochs, eta_min=1e-6)
     
     try:
