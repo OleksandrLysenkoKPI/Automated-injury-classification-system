@@ -80,6 +80,8 @@ class DICOMProcessor:
     
     def get_normalized(self, data, target_range=(0, 1), clamping_percentile=(1, 99)):
         """Internal helper to normalize any given array to a specific range and handle outliers via clamping."""
+        data = data.astype(np.float32)
+        
         lower_bound = np.percentile(data, clamping_percentile[0])
         upper_bound = np.percentile(data, clamping_percentile[1])
         
@@ -94,12 +96,12 @@ class DICOMProcessor:
         if target_range == (0, 255):
             return (normalized * 255).astype(np.uint8)
         
-        return normalized.astype(np.float32)
+        return normalized.astype(np.float16)
     
     def get_processed_volume(self, target_range=(0, 1), target_spacing=(1.0, 1.0, 1.0), target_shape=(64, 160, 160)):
         """Applies the full preprocessing pipeline to the current DICOM object."""
         try:
-            data = self.pixels_hu
+            data = self.pixels_hu.astype(np.float32)
             data = wavelet_denoising_3d(data)
             
             logger.info(f"Resampling from {self.spacing} to {target_spacing}...")
@@ -112,10 +114,10 @@ class DICOMProcessor:
             tensor = F.interpolate(tensor, size=(current_depth, 224, 224), mode='trilinear')
         
             tensor = resize_3d_tensor(tensor.squeeze(0), target_shape)
-            final_data = tensor.squeeze(0).numpy()
+            final_data_f32 = tensor.squeeze(0).numpy()
             
-            normalized_data = self.get_normalized(final_data, target_range=target_range)
-            return normalized_data
+            normalized_data_f16 = self.get_normalized(final_data_f32, target_range=target_range)
+            return normalized_data_f16
         except Exception as e:
             logger.error(f"Pipeline processing failed: {e}")
         return None
