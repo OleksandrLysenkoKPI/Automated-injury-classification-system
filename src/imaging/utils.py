@@ -89,7 +89,7 @@ def wavelet_denoising_3d(data):
     
     return denoised_data.astype(np.float32)
 
-def split_data(root_path: str | Path, train_ratio: float = 0.7, val_ratio: float = 0.15):
+def split_data(root_path: str | Path, train_ratio: float = 0.6, val_ratio: float = 0.25):
     """
     Splits data into Train, Validation and Test sets.
     The remaining ratio (1 - train_ratio - val_ratio) goes to Test.
@@ -146,7 +146,7 @@ def split_data(root_path: str | Path, train_ratio: float = 0.7, val_ratio: float
     return split_paths["train"], split_paths["val"], split_paths["test"]
 
 def add_noise(data: np.ndarray, standard: float) -> np.ndarray:
-    noise = np.random.normal(0, standard, data.shape).astype(np.float32)
+    noise = np.random.normal(0, standard, data.shape).astype(np.float16)
     return data + noise
 
 def augment_and_save_dataset(root_path: str | Path):
