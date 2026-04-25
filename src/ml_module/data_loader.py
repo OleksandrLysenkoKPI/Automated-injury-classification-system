@@ -1,9 +1,10 @@
 from ..logger_module.logger import CustomLogger
 from .ml_utils import get_dataset_paths, verify_dataset_processing
 from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import WeightedRandomSampler
+import torch.nn as nn
 import numpy as np
 import torch
-import random
 from pathlib import Path
 
 logger = CustomLogger("DataLoader_log")
@@ -37,7 +38,7 @@ class Knee3DPathologyDataset(Dataset):
             if self.cache_in_ram:
                 logger.info("Loading dataset into RAM... (Be careful with memory!)")
                 for file_path, label in self.samples:
-                    img = np.load(file_path).astype(np.float32)
+                    img = np.load(file_path).astype(np.float16)
                     tensor = torch.from_numpy(img).unsqueeze(0).clone()
                     self.cached_data.append(torch.clamp(tensor, 0.0, 1.0))
                     self.labels.append(label)
@@ -54,10 +55,9 @@ class Knee3DPathologyDataset(Dataset):
             return self.cached_data[index], self.labels[index]
         else:
             file_path, label = self.samples[index]
-            img = np.load(file_path).astype(np.float32)
+            img = np.load(file_path).astype(np.float16)
             tensor = torch.from_numpy(img).unsqueeze(0).clone()
             return torch.clamp(tensor, 0.0, 1.0), label
-
 
 def load_dataset(target_shape: tuple[int, int, int], batch_size: int = 4, load_augmented: bool = False, verify_processing: bool = False, img_idx: int = 1, cache_in_ram: bool = False):
     """Loads dataset and returns DataLoader objects with list of found classes"""
@@ -74,13 +74,21 @@ def load_dataset(target_shape: tuple[int, int, int], batch_size: int = 4, load_a
         
         train_workers = 0 if cache_in_ram else 4
         
+        target_list = torch.tensor([sample[1] for sample in train_dataset.samples])
+        class_count = [torch.sum(target_list == i).item() for i in range(len(train_dataset.classes))]
+        
+        class_weights = 1. / torch.tensor(class_count, dtype=torch.float)
+        sample_weights = class_weights[target_list]
+        
+        sampler = WeightedRandomSampler(weights=sample_weights.tolist(), num_samples=len(sample_weights), replacement=True)
+        
         train_loader = DataLoader(
             train_dataset, 
             batch_size=batch_size, 
-            shuffle=True, 
+            sampler=sampler,
             num_workers=train_workers, 
             pin_memory=True,
-            persistent_workers=(train_workers > 0)
+            shuffle=False
         )
         val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=train_workers, pin_memory=True)
         test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=True)
