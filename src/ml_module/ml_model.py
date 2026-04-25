@@ -1,17 +1,14 @@
 from typing import Any
-import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
-import torchvision.transforms.functional as TF
 from torch.utils.data import DataLoader
 from torch.nn.modules.loss import _Loss
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from torch.amp.autocast_mode import autocast
 from torch.amp.grad_scaler import GradScaler
-from torchvision.models.video import r3d_18, R3D_18_Weights
 import torch.backends.cudnn as cudnn
 from ..logger_module.logger import CustomLogger
 from .data_loader import load_dataset
@@ -19,49 +16,58 @@ from sklearn.metrics import classification_report
 
 logger = CustomLogger("ML_module_log")
 
-# TODO: rewrite utilizing fine-tuned 3D ResNet
-class KneeResNet(nn.Module):
+class KneeNet3D(nn.Module):
     def __init__(self, num_classes: int):
-        super(KneeResNet, self).__init__()
-        
-        weights = R3D_18_Weights.DEFAULT
-        self.model = r3d_18(weights=weights)
-        
-        original_conv = self.model.stem[0] # type: ignore
-        self.model.stem[0] = nn.Conv3d( # type: ignore
-            in_channels=1, 
-            out_channels=original_conv.out_channels,
-            kernel_size=original_conv.kernel_size,
-            stride=original_conv.stride,
-            padding=original_conv.padding,
-            bias=False
+        super(KneeNet3D, self).__init__()
+        self.features = nn.Sequential(
+            self.conv_layer(1, 32, stride=2, dropout_p=0.1),  
+            self.conv_layer(32, 64, stride=2, dropout_p=0.1), 
+            self.conv_layer(64, 128, stride=2, dropout_p=0.2), 
+            self.conv_layer(128, 256, stride=2, dropout_p=0.2),
         )
+
+        self.avgpool = nn.AdaptiveAvgPool3d((1, 1, 1))
+        self.maxpool = nn.AdaptiveMaxPool3d((1, 1, 1))
         
-        num_ftrs = self.model.fc.in_features
-        
-        self.model.fc = nn.Identity() # type: ignore
-        
-        self.custom_head = nn.Sequential(
-            nn.Linear(num_ftrs, 256),
-            nn.BatchNorm1d(256),
-            nn.LeakyReLU(0.1),
-            nn.Dropout(p=0.6),
-            nn.Linear(256, num_classes)
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(512, 512),
+            nn.BatchNorm1d(512),
+            nn.LeakyReLU(0.1, inplace=True),
+            nn.Dropout(p=0.7),
+            nn.Linear(512, num_classes)
         )
-    
+
+    def conv_layer(self, in_c, out_c, stride=1, dropout_p=0.0):
+        layers = [
+            nn.Conv3d(in_c, out_c, kernel_size=3, padding=1, stride=stride, bias=False),
+            nn.BatchNorm3d(out_c),
+            nn.LeakyReLU(0.1, inplace=True)
+        ]
+        if dropout_p > 0:
+            layers.append(nn.Dropout3d(p=dropout_p))
+        
+        return nn.Sequential(*layers)
+
     def forward(self, x: torch.Tensor):
-       x = self.model(x)
-       
-       x = self.custom_head(x)
-       
-       return x
+        x = x.float() 
+        x = self.features(x)
+        
+        avg_x = self.avgpool(x).flatten(1)
+        max_x = self.maxpool(x).flatten(1)
+        
+        # concatenate both types of polling
+        x = torch.cat([avg_x, max_x], dim=1)
+        x = self.classifier(x)
+        return x
 
 class EarlyStopping:
-    def __init__(self, patience: int = 7, min_delta: float = 0.0, verbose=True):
+    def __init__(self, patience: int =10, min_delta: float = 0.001, verbose=True):
         """
         Args:
             patience (int): Number of epochs to wait after the last update. Defaults to 7.
             min_delta (float): The smallest change required for it to be considered an improvement. Defaults to 0.0.
+            verbose (bool): Toggle for logging message. Defaults to True.
         """
         self.patience = patience
         self.min_delta = min_delta
@@ -83,12 +89,24 @@ class EarlyStopping:
             self.best_loss = val_loss
             self.counter = 0
         
+class FocalLoss(nn.Module):
+    def __init__(self, alpha=1, gamma=2, weight=None):
+        super(FocalLoss, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+        self.weight = weight
+        
+    def forward(self, inputs, targets):
+        ce_loss = nn.CrossEntropyLoss(weight=self.weight, reduction='none')(inputs, targets)
+        pt = torch.exp(-ce_loss)
+        focal_loss = self.alpha * (1 - pt)**self.gamma * ce_loss
+        return focal_loss.mean()
 
 def train_model(
     model: Any,
     train_loader: DataLoader,
     val_loader: DataLoader,
-    criterion: _Loss,
+    criterion: FocalLoss,
     optimizer: Optimizer,
     scheduler: LRScheduler,
     device: torch.device,
@@ -98,27 +116,11 @@ def train_model(
     best_val_acc = 0.0
     best_model_state = None
     best_val_loss = float('inf')
+    early_stopping = EarlyStopping(patience=25, min_delta=0,verbose=True)
     
-    early_stopping = EarlyStopping(patience=7, verbose=True)
-    
-    logger.info(f"Start training. Stage 1: Training only FC layer.")
+    logger.info(f"Start training Custom 3D KneeNet on {device}")
     
     for epoch in range(epochs):
-        if epoch == 15:
-            logger.info("Stage 2: Unfreezing backbone layers (layer3, layer4, stem.0) for fine-tuning.")
-            new_params = []
-            
-            for name, param in model.model.named_parameters():
-                if "layer3" in name or "layer4" in name or "stem.0" in name:
-                    param.requires_grad = True
-                    new_params.append(param)
-            
-            optimizer.add_param_group({'params': new_params, 'lr': 1e-5, 'weight_decay': 0.1})
-            
-            current_lr = optimizer.param_groups[0]['lr']
-            logger.info(f"Learning rates reset: Head LR: {current_lr}, Backbone LR: 1e-5")
-                
-        
         model.train()
         train_loss, train_correct, train_total = 0.0, 0, 0
         for images, labels in train_loader:
@@ -126,19 +128,10 @@ def train_model(
             labels: torch.Tensor
             
             images, labels = images.to(device, non_blocking=True), labels.to(device, non_blocking=True)
-            images = images + torch.randn_like(images) * 0.005 # micro noise for variability
             optimizer.zero_grad(set_to_none=True)
             
             # Forward pass with autocast
             with autocast(device_type="cuda"):
-                # if model.training:
-                #     if random.random() > 0.5:
-                #         images = torch.flip(images, dims=[-1]) # -1 = W
-                        
-                # if random.random() > 0.5:
-                #     angle = random.uniform(-15, 15)
-                #     images = TF.rotate(images, angle)
-                
                 outputs = model(images)
                 loss: torch.Tensor = criterion(outputs, labels)
             
@@ -189,11 +182,10 @@ def train_model(
             best_model_state = model.state_dict().copy()
             logger.info(f"New best model (Loss improved): Epoch {epoch+1} | Loss: {avg_val_loss:.4f}")
         
-        if epoch > 15:
-            early_stopping(avg_val_loss)
-            if early_stopping.early_stop:
-                logger.info("Early stopping triggered. Finishing training.")
-                break
+        early_stopping(avg_val_loss)
+        if early_stopping.early_stop:
+            logger.info("Early stopping triggered. Finishing training.")
+            break
         
     if best_model_state:
         model.load_state_dict(best_model_state)
@@ -201,7 +193,7 @@ def train_model(
     return model
 
 def evaluate_model(
-    model: KneeResNet,
+    model: KneeNet3D,
     test_loader: DataLoader,
     device: torch.device,
     class_names: list[str]
@@ -242,41 +234,29 @@ def start_model_pipeline(
     batch_size: int = 8, 
     target_shape: tuple[int, int, int] = (32, 128, 128), 
     save_file_name: str = "knee_3d_pathology_model",
-    use_augmented: bool = True
+    use_augmented: bool = True,
+    cache_in_ram: bool = False
 ):
     """Starts model training and evaluation pipeline. Saves model at the end.
 
     Args:
         epochs (int, optional): Defaults to 5.
-        batch_size (int, optional): Defaults to 4.
+        batch_size (int, optional): Defaults to 8.
         target_shape (tuple[int, int, int], optional): Defaults to (32, 256, 256).
         save_file_name (str, optional): Defaults to "knee_3d_pathology_model".
     """
     cudnn.benchmark = True
-    train_loader, val_loader, test_loader, classes = load_dataset(target_shape=target_shape, batch_size=batch_size, load_augmented=use_augmented)
+    train_loader, val_loader, test_loader, classes = load_dataset(target_shape=target_shape, batch_size=batch_size, load_augmented=use_augmented, cache_in_ram=cache_in_ram)
 
-    model = KneeResNet(num_classes=len(classes))
+    model = KneeNet3D(num_classes=len(classes))
     device = torch.device("cuda")
     model.to(device)
-
-    # Freezing
-    for param in model.parameters():
-        param.requires_grad = False
-    
-    for param in model.custom_head.parameters():
-        param.requires_grad = True
-    
-    # for name, param in model.model.named_parameters():
-    #     if "layer3" in name or "layer4" in name or "fc" in name or "stem.0" in name:
-    #         param.requires_grad = True
-    #     else:
-    #         param.requires_grad = False
     
     trainable_params = [p for p in model.parameters() if p.requires_grad]
 
-    weights = torch.tensor([1.5, 2.5, 1.5, 1.5, 0.8, 1.2]).to(device)
-    criterion = nn.CrossEntropyLoss(weight=weights, label_smoothing=0.1)
-    optimizer = optim.AdamW(trainable_params, lr=1e-3, weight_decay=0.05)
+    weights = torch.tensor([1.5, 6.0, 1.5, 1.5, 0.8, 5.0]).to(device)
+    criterion = FocalLoss(weight=weights, gamma=2)
+    optimizer = optim.AdamW(trainable_params, lr=3e-4, weight_decay=0.1)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=epochs, eta_min=1e-6)
     
     try:
