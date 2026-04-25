@@ -16,50 +16,63 @@ from sklearn.metrics import classification_report
 
 logger = CustomLogger("ML_module_log")
 
+class DetailBlock(nn.Module):
+    def __init__(self, in_c, out_c, stride=1):
+        super().__init__()
+        self.conv = nn.Conv3d(in_c, out_c, kernel_size=3, padding=1, stride=stride, bias=False)
+        self.bn = nn.BatchNorm3d(out_c)
+        self.relu = nn.LeakyReLU(0.1, inplace=True)
+        
+        # Shortcut for detail saving
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_c != out_c:
+            self.shortcut = nn.Sequential(
+                nn.Conv3d(in_c, out_c, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm3d(out_c)
+            )
+            
+    def forward(self, x):
+        return self.relu(self.bn(self.conv(x)) + self.shortcut(x))
+        
+        
 class KneeNet3D(nn.Module):
     def __init__(self, num_classes: int):
         super(KneeNet3D, self).__init__()
         self.features = nn.Sequential(
-            self.conv_layer(1, 32, stride=2, dropout_p=0.1),  
-            self.conv_layer(32, 64, stride=2, dropout_p=0.1), 
-            self.conv_layer(64, 128, stride=2, dropout_p=0.2), 
-            self.conv_layer(128, 256, stride=2, dropout_p=0.2),
+            DetailBlock(1, 16, stride=1),  # Save resolution on start
+            DetailBlock(16, 32, stride=2), # 128 -> 64
+            DetailBlock(32, 64, stride=2), # 64 -> 32
+            DetailBlock(64, 128, stride=2),# 32 -> 16
+            nn.Dropout3d(p=0.3)
         )
-
+        
         self.avgpool = nn.AdaptiveAvgPool3d((1, 1, 1))
-        self.maxpool = nn.AdaptiveMaxPool3d((1, 1, 1))
         
         self.classifier = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(512, 512),
-            nn.BatchNorm1d(512),
-            nn.LeakyReLU(0.1, inplace=True),
+            nn.Linear(128, 256),
+            nn.BatchNorm1d(256),
+            nn.LeakyReLU(0.1),
             nn.Dropout(p=0.7),
-            nn.Linear(512, num_classes)
+            nn.Linear(256, num_classes)
         )
 
-    def conv_layer(self, in_c, out_c, stride=1, dropout_p=0.0):
-        layers = [
-            nn.Conv3d(in_c, out_c, kernel_size=3, padding=1, stride=stride, bias=False),
-            nn.BatchNorm3d(out_c),
-            nn.LeakyReLU(0.1, inplace=True)
-        ]
-        if dropout_p > 0:
-            layers.append(nn.Dropout3d(p=dropout_p))
+    # def conv_layer(self, in_c, out_c, stride=1, dropout_p=0.0):
+    #     layers = [
+    #         nn.Conv3d(in_c, out_c, kernel_size=3, padding=1, stride=stride, bias=False),
+    #         nn.BatchNorm3d(out_c),
+    #         nn.LeakyReLU(0.1, inplace=True)
+    #     ]
+    #     if dropout_p > 0:
+    #         layers.append(nn.Dropout3d(p=dropout_p))
         
-        return nn.Sequential(*layers)
+    #     return nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor):
-        x = x.float() 
+        x = x.float()
         x = self.features(x)
-        
-        avg_x = self.avgpool(x).flatten(1)
-        max_x = self.maxpool(x).flatten(1)
-        
-        # concatenate both types of polling
-        x = torch.cat([avg_x, max_x], dim=1)
-        x = self.classifier(x)
-        return x
+        x = self.avgpool(x).flatten(1)
+        return self.classifier(x)
 
 class EarlyStopping:
     def __init__(self, patience: int =10, min_delta: float = 0.001, verbose=True):
@@ -89,24 +102,24 @@ class EarlyStopping:
             self.best_loss = val_loss
             self.counter = 0
         
-class FocalLoss(nn.Module):
-    def __init__(self, alpha=1, gamma=2, weight=None):
-        super(FocalLoss, self).__init__()
-        self.alpha = alpha
-        self.gamma = gamma
-        self.weight = weight
+# class FocalLoss(nn.Module):
+#     def __init__(self, alpha=1, gamma=2, weight=None):
+#         super(FocalLoss, self).__init__()
+#         self.alpha = alpha
+#         self.gamma = gamma
+#         self.weight = weight
         
-    def forward(self, inputs, targets):
-        ce_loss = nn.CrossEntropyLoss(weight=self.weight, reduction='none')(inputs, targets)
-        pt = torch.exp(-ce_loss)
-        focal_loss = self.alpha * (1 - pt)**self.gamma * ce_loss
-        return focal_loss.mean()
+#     def forward(self, inputs, targets):
+#         ce_loss = nn.CrossEntropyLoss(weight=self.weight, reduction='none')(inputs, targets)
+#         pt = torch.exp(-ce_loss)
+#         focal_loss = self.alpha * (1 - pt)**self.gamma * ce_loss
+#         return focal_loss.mean()
 
 def train_model(
     model: Any,
     train_loader: DataLoader,
     val_loader: DataLoader,
-    criterion: FocalLoss,
+    criterion: _Loss,
     optimizer: Optimizer,
     scheduler: LRScheduler,
     device: torch.device,
@@ -254,9 +267,9 @@ def start_model_pipeline(
     
     trainable_params = [p for p in model.parameters() if p.requires_grad]
 
-    weights = torch.tensor([1.5, 6.0, 1.5, 1.5, 0.8, 5.0]).to(device)
-    criterion = FocalLoss(weight=weights, gamma=2)
-    optimizer = optim.AdamW(trainable_params, lr=3e-4, weight_decay=0.1)
+    weights = torch.tensor([1.5, 6.0, 1.5, 1.5, 1.0, 5.0]).to(device)
+    criterion = nn.CrossEntropyLoss(weight=weights, label_smoothing=0.2)
+    optimizer = optim.AdamW(trainable_params, lr=1e-4, weight_decay=0.2)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=epochs, eta_min=1e-6)
     
     try:
