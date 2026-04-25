@@ -17,6 +17,10 @@ def print_menu():
     print("5 -- Augment NumPy dataset")
     print("6 -- Load dataset")
     print("7 -- Start model pipeline")
+    print("0 -- Exit")
+    print("+"*30)
+    print("9 -- 3 in 1: Convert, Split, Augment")
+    print("10 -- 2 in 1: Split, Augment")
     print("-"*30)
     print("Choice: ", end="")
 
@@ -27,15 +31,19 @@ if __name__ == "__main__":
     dataset_folder = os.getenv('KNEE_CONDITIONS_DATASET')
     output_png_folder = "data/converted_data/converted_PNG"
     output_npy_folder = "data/converted_data/converted_NumPy"
+    converted_npy_folder = "data/converted_data/converted_NumPy"
+    data_to_augment = "data/prepared_data/train"
     
     test_dicom_image = os.getenv('TEST_DICOM_IMAGE')
     test_numpy_image = os.getenv('TEST_NUMPY_IMAGE')
     
     processor = DICOMProcessor()
     
-    # High Fidelity (64, 160, 160), Standard Balanced (48, 224, 224), Deep MRI (96, 128, 128)
-    target_shape = (48, 224, 224)
+    # High Fidelity (64, 160, 160), Standard Balanced (48, 224, 224), Deep MRI (96, 128, 128), Speed (32, 128, 128)
+    target_shape = (32, 128, 128)
     target_spacing = (1.0, 1.0, 1.0)
+    cache_in_ram = True
+    batch_size = 16
     
     while True:
         print_menu()
@@ -53,15 +61,22 @@ if __name__ == "__main__":
             elif choice_input == 2:
                 verify_npy_conversion(processor=processor, dicom_path=test_dicom_image, npy_path=test_numpy_image)
             elif choice_input == 3:
-                numpy_examiner('data/converted_data/converted_NumPy', print_paths=False)
+                numpy_examiner(converted_npy_folder, print_paths=False)
             elif choice_input == 4:
-                split_data('data/converted_data/converted_NumPy')
+                split_data(converted_npy_folder)
             elif choice_input == 5:
-                augment_and_save_dataset('data/prepared_data/train')
+                augment_and_save_dataset(data_to_augment)
             elif choice_input == 6:
                 load_dataset(target_shape=target_shape, batch_size=4, load_augmented=True, verify_processing=True, img_idx=10)
             elif choice_input == 7:
-                start_model_pipeline(epochs=30, batch_size=8, target_shape=target_shape, save_file_name="knee_3d_pathology_model", use_augmented=True)
+                start_model_pipeline(epochs=100, batch_size=batch_size, target_shape=target_shape, save_file_name="knee_3d_pathology_model", use_augmented=True, cache_in_ram=cache_in_ram)
+            elif choice_input == 9:
+                processor.process_all_conditions(dataset_folder, output_png_folder, output_npy_folder, target_shape=target_shape, target_spacing=target_spacing)
+                split_data(converted_npy_folder)
+                augment_and_save_dataset(data_to_augment)
+            elif choice_input == 10:
+                split_data(converted_npy_folder)
+                augment_and_save_dataset(data_to_augment)
             elif choice_input == 0:
                 print("Exiting program...")
                 break
