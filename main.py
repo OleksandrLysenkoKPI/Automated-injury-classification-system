@@ -69,7 +69,7 @@ if __name__ == "__main__":
             elif choice_input == 6:
                 load_dataset(target_shape=target_shape, batch_size=4, load_augmented=True, verify_processing=True, img_idx=10)
             elif choice_input == 7:
-                start_model_pipeline(epochs=100, batch_size=batch_size, target_shape=target_shape, save_file_name="knee_3d_pathology_model", use_augmented=True, cache_in_ram=cache_in_ram)
+                start_model_pipeline(epochs=50, batch_size=batch_size, target_shape=target_shape, save_file_name="knee_3d_pathology_model", use_augmented=True, cache_in_ram=cache_in_ram)
             elif choice_input == 9:
                 processor.process_all_conditions(dataset_folder, output_png_folder, output_npy_folder, target_shape=target_shape, target_spacing=target_spacing)
                 split_data(converted_npy_folder)

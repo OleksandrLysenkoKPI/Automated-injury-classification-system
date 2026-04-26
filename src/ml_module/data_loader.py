@@ -52,12 +52,24 @@ class Knee3DPathologyDataset(Dataset):
     
     def __getitem__(self, index):
         if self.cache_in_ram:
-            return self.cached_data[index], self.labels[index]
+            tensor, label = self.cached_data[index], self.labels[index]
         else:
             file_path, label = self.samples[index]
             img = np.load(file_path).astype(np.float16)
             tensor = torch.from_numpy(img).unsqueeze(0).clone()
-            return torch.clamp(tensor, 0.0, 1.0), label
+            tensor = torch.clamp(tensor, 0.0, 1.0)
+
+        if self.is_train:
+            if torch.rand(1) > 0.5:
+                tensor = torch.flip(tensor, dims=[-1])
+                
+            if torch.rand(1) > 0.5:
+                tensor = torch.flip(tensor, dims=[-2])
+            
+            noise = torch.randn_like(tensor) * 0.002
+            tensor = tensor + noise
+            
+        return tensor.float(), label
 
 def load_dataset(target_shape: tuple[int, int, int], batch_size: int = 4, load_augmented: bool = False, verify_processing: bool = False, img_idx: int = 1, cache_in_ram: bool = False):
     """Loads dataset and returns DataLoader objects with list of found classes"""

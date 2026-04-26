@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch.nn.modules.loss import _Loss
 from torch.optim import Optimizer
@@ -16,14 +17,13 @@ from sklearn.metrics import classification_report
 
 logger = CustomLogger("ML_module_log")
 
-class DetailBlock(nn.Module):
+class DetailBlock3D(nn.Module):
     def __init__(self, in_c, out_c, stride=1):
         super().__init__()
         self.conv = nn.Conv3d(in_c, out_c, kernel_size=3, padding=1, stride=stride, bias=False)
         self.bn = nn.BatchNorm3d(out_c)
         self.relu = nn.LeakyReLU(0.1, inplace=True)
         
-        # Shortcut for detail saving
         self.shortcut = nn.Sequential()
         if stride != 1 or in_c != out_c:
             self.shortcut = nn.Sequential(
@@ -35,47 +35,49 @@ class DetailBlock(nn.Module):
         return self.relu(self.bn(self.conv(x)) + self.shortcut(x))
         
         
-class KneeNet3D(nn.Module):
+class KneeResidualAttentionNet(nn.Module):
     def __init__(self, num_classes: int):
-        super(KneeNet3D, self).__init__()
+        super().__init__()
+        
+        # Features extractor based on 3D residual blocks
         self.features = nn.Sequential(
-            DetailBlock(1, 16, stride=1),  # Save resolution on start
-            DetailBlock(16, 32, stride=2), # 128 -> 64
-            DetailBlock(32, 64, stride=2), # 64 -> 32
-            DetailBlock(64, 128, stride=2),# 32 -> 16
-            nn.Dropout3d(p=0.3)
+            DetailBlock3D(1, 16, stride=1),
+            DetailBlock3D(16, 32, stride=2),
+            DetailBlock3D(32, 64, stride=2),
+            DetailBlock3D(64, 256, stride=2),
         )
         
-        self.avgpool = nn.AdaptiveAvgPool3d((1, 1, 1))
+        # Spatial-Depth Attention
+        self.attn_layer = nn.Sequential(
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, 1)
+        )
         
         self.classifier = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(128, 256),
-            nn.BatchNorm1d(256),
+            nn.Linear(256, 512),
+            nn.BatchNorm1d(512),
             nn.LeakyReLU(0.1),
-            nn.Dropout(p=0.7),
-            nn.Linear(256, num_classes)
+            nn.Dropout(p=0.6),
+            nn.Linear(512, num_classes)
         )
-
-    # def conv_layer(self, in_c, out_c, stride=1, dropout_p=0.0):
-    #     layers = [
-    #         nn.Conv3d(in_c, out_c, kernel_size=3, padding=1, stride=stride, bias=False),
-    #         nn.BatchNorm3d(out_c),
-    #         nn.LeakyReLU(0.1, inplace=True)
-    #     ]
-    #     if dropout_p > 0:
-    #         layers.append(nn.Dropout3d(p=dropout_p))
-        
-    #     return nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor):
         x = x.float()
-        x = self.features(x)
-        x = self.avgpool(x).flatten(1)
-        return self.classifier(x)
+        x = self.features(x) # [B, 128, 4, 16, 16]
+        
+        x = F.adaptive_avg_pool3d(x, (x.shape[2], 1, 1)).flatten(2) # [B, 128, 4]
+        x = x.transpose(1, 2) # [B, 4, 128]
+        
+        weights = self.attn_layer(x) # [B, 4, 1]
+        weights = F.softmax(weights, dim=1)
+        
+        combined_features = torch.sum(x * weights, dim=1) # [B, 128]
+        
+        return self.classifier(combined_features)
 
 class EarlyStopping:
-    def __init__(self, patience: int =10, min_delta: float = 0.001, verbose=True):
+    def __init__(self, patience: int = 15, min_delta: float = 0.0, max_gap: float = 20.0, verbose=True):
         """
         Args:
             patience (int): Number of epochs to wait after the last update. Defaults to 7.
@@ -84,12 +86,21 @@ class EarlyStopping:
         """
         self.patience = patience
         self.min_delta = min_delta
+        self.max_gap = max_gap
         self.verbose = verbose
         self.counter = 0
         self.best_loss = None
         self.early_stop = False
         
-    def __call__(self, val_loss):
+    def __call__(self, val_loss, train_acc, val_acc):
+        gap = train_acc - val_acc
+        if gap > self.max_gap:
+            if self.verbose:
+                logger.warning(f"!!! Training stopped: Acc gap is too large ({gap:.2f}% > {self.max_gap}%)")
+            self.early_stop = True
+            return
+        
+        
         if self.best_loss is None:
             self.best_loss = val_loss
         elif val_loss > self.best_loss - self.min_delta:
@@ -101,19 +112,7 @@ class EarlyStopping:
         else:
             self.best_loss = val_loss
             self.counter = 0
-        
-# class FocalLoss(nn.Module):
-#     def __init__(self, alpha=1, gamma=2, weight=None):
-#         super(FocalLoss, self).__init__()
-#         self.alpha = alpha
-#         self.gamma = gamma
-#         self.weight = weight
-        
-#     def forward(self, inputs, targets):
-#         ce_loss = nn.CrossEntropyLoss(weight=self.weight, reduction='none')(inputs, targets)
-#         pt = torch.exp(-ce_loss)
-#         focal_loss = self.alpha * (1 - pt)**self.gamma * ce_loss
-#         return focal_loss.mean()
+
 
 def train_model(
     model: Any,
@@ -129,7 +128,7 @@ def train_model(
     best_val_acc = 0.0
     best_model_state = None
     best_val_loss = float('inf')
-    early_stopping = EarlyStopping(patience=25, min_delta=0,verbose=True)
+    early_stopping = EarlyStopping(patience=25, min_delta=0, max_gap=35.0,verbose=True)
     
     logger.info(f"Start training Custom 3D KneeNet on {device}")
     
@@ -195,7 +194,7 @@ def train_model(
             best_model_state = model.state_dict().copy()
             logger.info(f"New best model (Loss improved): Epoch {epoch+1} | Loss: {avg_val_loss:.4f}")
         
-        early_stopping(avg_val_loss)
+        early_stopping(avg_val_loss, train_acc, val_acc)
         if early_stopping.early_stop:
             logger.info("Early stopping triggered. Finishing training.")
             break
@@ -206,7 +205,7 @@ def train_model(
     return model
 
 def evaluate_model(
-    model: KneeNet3D,
+    model: KneeResidualAttentionNet,
     test_loader: DataLoader,
     device: torch.device,
     class_names: list[str]
@@ -261,15 +260,15 @@ def start_model_pipeline(
     cudnn.benchmark = True
     train_loader, val_loader, test_loader, classes = load_dataset(target_shape=target_shape, batch_size=batch_size, load_augmented=use_augmented, cache_in_ram=cache_in_ram)
 
-    model = KneeNet3D(num_classes=len(classes))
+    model = KneeResidualAttentionNet(num_classes=len(classes))
     device = torch.device("cuda")
     model.to(device)
     
     trainable_params = [p for p in model.parameters() if p.requires_grad]
 
-    weights = torch.tensor([1.5, 6.0, 1.5, 1.5, 1.0, 5.0]).to(device)
-    criterion = nn.CrossEntropyLoss(weight=weights, label_smoothing=0.2)
-    optimizer = optim.AdamW(trainable_params, lr=1e-4, weight_decay=0.2)
+    weights = torch.tensor([1.8, 2.5, 1.5, 1.8, 1.5, 1.8]).to(device)
+    criterion = nn.CrossEntropyLoss(weight=weights, label_smoothing=0.1)
+    optimizer = optim.AdamW(trainable_params, lr=1e-4, weight_decay=0.1)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=epochs, eta_min=1e-6)
     
     try:
