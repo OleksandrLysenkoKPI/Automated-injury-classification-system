@@ -1,3 +1,4 @@
+import os
 import pydicom
 from pydicom.pixels.processing import apply_rescale
 import numpy as np
@@ -5,7 +6,7 @@ import torch
 import torch.nn.functional as F
 from PIL import Image
 from pathlib import Path
-import os
+from concurrent.futures import ProcessPoolExecutor
 from .utils import wavelet_denoising_3d, resample_3d, get_knee_bbox, resize_3d_tensor
 from ..logger_module.logger import CustomLogger
 
@@ -173,35 +174,53 @@ class DICOMProcessor:
         
         return current_idx
                     
-    def process_all_conditions(self, root_dir, output_base_png, output_base_npy, target_shape: tuple[int, int, int] = (64, 160, 160), target_spacing: tuple[float, float, float]=(1.0, 1.0, 1.0)):
+    def process_single_patient(self, patient_path, condition_name, idx, output_base_png, output_base_npy, target_shape, target_spacing):
+        patient_label = f"patient#{idx}"
+        target_png = os.path.join(output_base_png, condition_name, patient_label)
+        target_npy = os.path.join(output_base_npy, condition_name, patient_label)
+        
+        os.makedirs(target_png, exist_ok=True)
+        os.makedirs(target_npy, exist_ok=True)
+        
+        file_counter = 1
+        for current_root, _, files in os.walk(patient_path):
+            dcm_files = [f for f in files if f.endswith('.dcm')]
+            if dcm_files:
+                file_counter = self.batch_conversion(
+                    current_root,
+                    output_png_dir=target_png,
+                    output_npy_dir=target_npy,
+                    start_idx=file_counter,
+                    target_shape=target_shape,
+                    target_spacing=target_spacing
+                )
+        return file_counter - 1
+    
+    def process_all_conditions(self, root_dir, output_base_png, output_base_npy, target_shape=(64, 160, 160), target_spacing=(1.0, 1.0, 1.0)):
         """
         Iterates through all the branch of a specified path and converts files,
-        recreating folder structure in output directories
+        recreating this folder structure in output directories: `Condition/patient/data`
         """
         root_path = Path(root_dir)
-        conditions = {d.name for d in root_path.iterdir() if d.is_dir()}
+        condition_paths = {d for d in root_path.iterdir() if d.is_dir()}
         
-        for condition in conditions:
-            condition_path = root_path / condition
-            target_png = os.path.join(output_base_png, condition)
-            target_npy = os.path.join(output_base_npy, condition)
-            
-            os.makedirs(target_png, exist_ok=True)
-            os.makedirs(target_npy, exist_ok=True)
-            
-            logger.info(f"Processing condition: {condition}")
-            
-            file_counter = 1
-            for current_root, _, files in os.walk(condition_path):
-                dcm_files = [f for f in files if f.endswith('.dcm')]
-                if dcm_files:
-                    file_counter = self.batch_conversion(
-                        current_root,
-                        output_png_dir=target_png,
-                        output_npy_dir=target_npy,
-                        start_idx=file_counter,
-                        target_shape=target_shape,
-                        target_spacing=target_spacing
+        with ProcessPoolExecutor() as executor:
+            for condition_path in condition_paths:
+                condition_name = condition_path.name
+                logger.info(f"Starting parallel processing for: {condition_name}")
+                
+                patient_folders = sorted([d for d in condition_path.iterdir() if d.is_dir()])
+                
+                futures = []
+                for idx, patient_path in enumerate(patient_folders, start=1):
+                    futures.append(
+                        executor.submit(
+                            self.process_single_patient,
+                            patient_path, condition_name, idx,
+                            output_base_png, output_base_npy,
+                            target_shape, target_spacing
+                        )
                     )
-
-        logger.info(f"Finished {condition}. Total files {file_counter-1}")
+                    
+                total_files = sum(f.result() for f in futures)
+                logger.info(f"Finished {condition_path}. Total files {total_files}.")
