@@ -29,9 +29,10 @@ if __name__ == "__main__":
     load_dotenv()
     
     dataset_folder = os.getenv('KNEE_CONDITIONS_DATASET')
-    output_png_folder = "data/converted_data/converted_PNG"
-    output_npy_folder = "data/converted_data/converted_NumPy"
     converted_npy_folder = "data/converted_data/converted_NumPy"
+    converted_png_folder = "data/converted_data/converted_PNG"
+    prepared_data_folder = "data/prepared_data"
+    
     data_to_augment = "data/prepared_data/train"
     
     test_dicom_image = os.getenv('TEST_DICOM_IMAGE')
@@ -57,13 +58,13 @@ if __name__ == "__main__":
             choice_input = int(choice_input)
             
             if choice_input == 1:
-                processor.process_all_conditions(dataset_folder, output_png_folder, output_npy_folder, target_shape=target_shape, target_spacing=target_spacing)
+                processor.process_all_conditions(dataset_folder, converted_png_folder, converted_npy_folder, target_shape=target_shape, target_spacing=target_spacing)
             elif choice_input == 2:
                 verify_npy_conversion(processor=processor, dicom_path=test_dicom_image, npy_path=test_numpy_image)
             elif choice_input == 3:
                 numpy_examiner(converted_npy_folder, print_paths=False)
             elif choice_input == 4:
-                split_data(converted_npy_folder)
+                split_data(converted_npy_folder, converted_png_folder, prepared_data_folder)
             elif choice_input == 5:
                 augment_and_save_dataset(data_to_augment)
             elif choice_input == 6:
@@ -71,11 +72,11 @@ if __name__ == "__main__":
             elif choice_input == 7:
                 start_model_pipeline(epochs=50, batch_size=batch_size, target_shape=target_shape, save_file_name="knee_3d_pathology_model", use_augmented=True, cache_in_ram=cache_in_ram)
             elif choice_input == 9:
-                processor.process_all_conditions(dataset_folder, output_png_folder, output_npy_folder, target_shape=target_shape, target_spacing=target_spacing)
-                split_data(converted_npy_folder)
+                processor.process_all_conditions(dataset_folder, converted_png_folder, converted_npy_folder, target_shape=target_shape, target_spacing=target_spacing)
+                split_data(converted_npy_folder, converted_png_folder, prepared_data_folder)
                 augment_and_save_dataset(data_to_augment)
             elif choice_input == 10:
-                split_data(converted_npy_folder)
+                split_data(converted_npy_folder, converted_png_folder, prepared_data_folder)
                 augment_and_save_dataset(data_to_augment)
             elif choice_input == 0:
                 print("Exiting program...")

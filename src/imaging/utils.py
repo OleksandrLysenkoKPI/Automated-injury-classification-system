@@ -89,66 +89,87 @@ def wavelet_denoising_3d(data):
     
     return denoised_data.astype(np.float32)
 
-def split_data(root_path: str | Path, train_ratio: float = 0.6, val_ratio: float = 0.25):
+def split_data(npy_root: str | Path, png_root: str | Path, output_base: str | Path,
+               train_ratio: float = 0.6, val_ratio: float = 0.25):
     """
-    Splits data into Train, Validation and Test sets.
+    Splits data into Train, Validation and Test sets on patient level.
+    Copies .npy and .png data to ensure consistency.
     The remaining ratio (1 - train_ratio - val_ratio) goes to Test.
     """
     logger.info("Start data splitting process")
-    root_path = Path(root_path)
-    data_dir = root_path.parents[1] 
-    prepared_data_path = data_dir / "prepared_data"
     
-    split_paths = {
-        "train": prepared_data_path / "train",
-        "val": prepared_data_path / "val",
-        "test": prepared_data_path / "test",
-    }
+    npy_root = Path(npy_root)
+    png_root = Path(png_root)
+    output_base = Path(output_base)
+    
+    if not npy_root.exists():
+        raise FileNotFoundError(f"NPY root not found: {npy_root}")
+    if not png_root.exists():
+        logger.warning(f"PNG root not found at {png_root}. Only .npy files will be processed.")
     
     test_ratio = 1.0 - train_ratio - val_ratio
-    if test_ratio < 0:
-        raise ValueError("Sum of train_ratio and val_ratio cannot exceed 1.0")
+    if test_ratio < -1e-5:
+        raise ValueError("The sum of train + val cannot exceed 1.0")
     
-    try:
-        prepared_data_path.mkdir(exist_ok=True)
+    output_base.mkdir(parents=True, exist_ok=True)
+    
+    splits = ["train", "val", "test"]
+    types = ["npy", "png"]
+    
+    conditions = [d.name for d in npy_root.iterdir() if d.is_dir()]
+    
+    for condition in conditions:
+        logger.info(f"Splitting for condition: {condition}")
         
-        for cls_folder in root_path.iterdir():
-            if not cls_folder.is_dir():
-                continue
+        patient_folders = sorted([d for d in (npy_root / condition).iterdir() if d.is_dir()])
+        if not patient_folders:
+            logger.warning(f"Empty condition folder: {condition}")
+            continue
+
+        random.shuffle(patient_folders)
+        
+        n_patients = len(patient_folders)
+        idx_train = int(n_patients * train_ratio)
+        idx_val = int(n_patients * (train_ratio + val_ratio))
+        
+        patient_subsets = {
+            "train": patient_folders[:idx_train],
+            "val": patient_folders[idx_train:idx_val],
+            "test": patient_folders[idx_val:]
+        }
+        
+        for split in splits:
+            subset = patient_subsets[split]
             
-            for path in split_paths.values():
-                (path / cls_folder.name).mkdir(parents=True, exist_ok=True)
+            for t in types:
+                (output_base / split / t / condition).mkdir(parents=True, exist_ok=True)
             
-            files = list(cls_folder.glob("*.npy"))
-            random.shuffle(files)
-            
-            n_total = len(files)
-            idx_train = int(n_total * train_ratio)
-            idx_val = int(n_total * (train_ratio + val_ratio))
-            
-            subsets = {
-                "train": files[:idx_train],
-                "val": files[idx_train:idx_val],
-                "test": files[idx_val:]
-            }
-            
-            for key, subset_files in subsets.items():
-                dest_folder = split_paths[key] / cls_folder.name
-                for f in subset_files:
-                    shutil.copy(f, dest_folder / f.name)
+            for patient_path in subset:
+                patient_name = patient_path.name
                 
-                logger.info(f"Class {cls_folder.name}: {len(subset_files)} files copied to {key}")
-    except Exception as e:
-        logger.error(f"Error occurred during data splitting: {e}")
-        raise
-    
-    logger.info(f"Split complete. Prepared data located at: {prepared_data_path}")
-    return split_paths["train"], split_paths["val"], split_paths["test"]
+                dest_npy = output_base / split / "npy" / condition / patient_name
+                dest_png = output_base / split / "png" / condition / patient_name
+                
+                try:
+                    shutil.copytree(patient_path, dest_npy, dirs_exist_ok=True)
+                    
+                    src_png = png_root / condition / patient_name
+                    if src_png.exists():
+                        shutil.copytree(src_png, dest_png, dirs_exist_ok=True)
+                except Exception as e:
+                    logger.error(f"Failed to copy data for {patient_name}: {e}")
+        
+        logger.info(f"Condition {condition}: Train={len(patient_subsets['train'])}, "
+                    f"Val={len(patient_subsets['val'])}, Test={len(patient_subsets['test'])} patients.")
+
+    logger.info(f"Split complete. Data located at: {output_base}")
+
 
 def add_noise(data: np.ndarray, standard: float) -> np.ndarray:
     noise = np.random.normal(0, standard, data.shape).astype(np.float16)
     return data + noise
 
+# TODO: Write augmentation function for png images
 def augment_and_save_dataset(root_path: str | Path):
     """Augments given NumPy data and saves it in a separate folder. Includes several augmentations:
     1. Original.
@@ -224,7 +245,7 @@ def augment_and_save_dataset(root_path: str | Path):
                
     logger.info(f"Augmentation finished. New augmented dataset location: {output_base}")
             
-# TODO: Rewrite to work woth transformed images 
+# TODO: Rewrite to work with transformed images
 def verify_npy_conversion(processor, dicom_path, npy_path):
     """Compares original DICOM with loaded NumPy file"""
     try:
