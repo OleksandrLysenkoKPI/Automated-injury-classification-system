@@ -1,5 +1,6 @@
 from src.imaging.image_converter import DICOMProcessor
-from src.imaging.utils import verify_npy_conversion, augment_and_save_dataset, split_data
+from src.imaging.utils import verify_npy_conversion, split_data
+from src.imaging.image_augmentation import augment_and_save_npy_dataset, augment_and_save_png_dataset
 from src.ml_module.ml_utils import numpy_examiner
 from src.ml_module.data_loader import load_dataset
 from src.ml_module.ml_model import start_model_pipeline
@@ -15,6 +16,7 @@ def print_menu():
     print("3 -- Examine NumPy files")
     print("4 -- Split train data")
     print("5 -- Augment NumPy dataset")
+    print("55 -- Augment PNG dataset")
     print("6 -- Load dataset")
     print("7 -- Start model pipeline")
     print("0 -- Exit")
@@ -33,7 +35,8 @@ if __name__ == "__main__":
     converted_png_folder = "data/converted_data/converted_PNG"
     prepared_data_folder = "data/prepared_data"
     
-    data_to_augment = "data/prepared_data/train"
+    npy_data_to_augment = "data/prepared_data/train/npy"
+    png_data_to_augment = "data/prepared_data/train/png"
     
     test_dicom_image = os.getenv('TEST_DICOM_IMAGE')
     test_numpy_image = os.getenv('TEST_NUMPY_IMAGE')
@@ -66,7 +69,9 @@ if __name__ == "__main__":
             elif choice_input == 4:
                 split_data(converted_npy_folder, converted_png_folder, prepared_data_folder)
             elif choice_input == 5:
-                augment_and_save_dataset(data_to_augment)
+                augment_and_save_npy_dataset(npy_data_to_augment)
+            elif choice_input == 55:
+                augment_and_save_png_dataset(png_data_to_augment)
             elif choice_input == 6:
                 load_dataset(target_shape=target_shape, batch_size=4, load_augmented=True, verify_processing=True, img_idx=10)
             elif choice_input == 7:
@@ -74,10 +79,10 @@ if __name__ == "__main__":
             elif choice_input == 9:
                 processor.process_all_conditions(dataset_folder, converted_png_folder, converted_npy_folder, target_shape=target_shape, target_spacing=target_spacing)
                 split_data(converted_npy_folder, converted_png_folder, prepared_data_folder)
-                augment_and_save_dataset(data_to_augment)
+                augment_and_save_npy_dataset(npy_data_to_augment)
             elif choice_input == 10:
                 split_data(converted_npy_folder, converted_png_folder, prepared_data_folder)
-                augment_and_save_dataset(data_to_augment)
+                augment_and_save_npy_dataset(npy_data_to_augment)
             elif choice_input == 0:
                 print("Exiting program...")
                 break
