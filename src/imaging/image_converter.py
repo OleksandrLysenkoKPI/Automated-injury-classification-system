@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from PIL import Image
 from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor
-from .utils import wavelet_denoising_3d, resample_3d, get_knee_bbox, resize_3d_tensor
+from .image_preprocessing import wavelet_denoising_3d, resample_3d, get_knee_bbox, resize_3d_tensor
 from ..logger_module.logger import CustomLogger
 
 logger = CustomLogger("Imaging_log")
