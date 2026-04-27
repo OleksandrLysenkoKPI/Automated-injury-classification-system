@@ -174,7 +174,10 @@ class DICOMProcessor:
         
         return current_idx
                     
-    def process_single_patient(self, patient_path, condition_name, idx, output_base_png, output_base_npy, target_shape, target_spacing):
+    @staticmethod
+    def process_single_patient(patient_path, condition_name, idx, output_base_png, output_base_npy, target_shape, target_spacing):
+        processor = DICOMProcessor()
+        
         patient_label = f"patient#{idx}"
         target_png = os.path.join(output_base_png, condition_name, patient_label)
         target_npy = os.path.join(output_base_npy, condition_name, patient_label)
@@ -186,7 +189,7 @@ class DICOMProcessor:
         for current_root, _, files in os.walk(patient_path):
             dcm_files = [f for f in files if f.endswith('.dcm')]
             if dcm_files:
-                file_counter = self.batch_conversion(
+                file_counter = processor.batch_conversion(
                     current_root,
                     output_png_dir=target_png,
                     output_npy_dir=target_npy,
@@ -207,7 +210,7 @@ class DICOMProcessor:
         with ProcessPoolExecutor() as executor:
             for condition_path in condition_paths:
                 condition_name = condition_path.name
-                logger.info(f"Starting parallel processing for: {condition_name}")
+                logger.info(f"Processing condition: {condition_name}")
                 
                 patient_folders = sorted([d for d in condition_path.iterdir() if d.is_dir()])
                 
@@ -215,7 +218,7 @@ class DICOMProcessor:
                 for idx, patient_path in enumerate(patient_folders, start=1):
                     futures.append(
                         executor.submit(
-                            self.process_single_patient,
+                            DICOMProcessor.process_single_patient,
                             patient_path, condition_name, idx,
                             output_base_png, output_base_npy,
                             target_shape, target_spacing
