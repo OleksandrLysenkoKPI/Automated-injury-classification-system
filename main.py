@@ -73,7 +73,7 @@ if __name__ == "__main__":
             elif choice_input == 55:
                 augment_and_save_png_dataset(png_data_to_augment)
             elif choice_input == 6:
-                load_dataset(target_shape=target_shape, batch_size=4, load_augmented=True, verify_processing=True, img_idx=10)
+                load_dataset(batch_size=64, mode="png", load_augmented=True, cache_in_ram=True)
             elif choice_input == 7:
                 start_model_pipeline(epochs=50, batch_size=batch_size, target_shape=target_shape, save_file_name="knee_3d_pathology_model", use_augmented=True, cache_in_ram=cache_in_ram)
             elif choice_input == 9:

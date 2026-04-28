@@ -50,11 +50,14 @@ def get_dataset_paths():
         
     dataset_path = Path(dataset_env)
     return {
-        "train": dataset_path / "train",
+        "train_npy": dataset_path / "train/npy",
+        "train_png": dataset_path / "train/png",
         "train_augmented_npy": dataset_path / "train_augmented_npy",
         "train_augmented_png": dataset_path / "train_augmented_png",
-        "val": dataset_path / "val",
-        "test": dataset_path / "test"
+        "val_npy": dataset_path / "val/npy",
+        "val_png": dataset_path / "val/png",
+        "test_npy": dataset_path / "test/npy",
+        "test_png": dataset_path / "test/png"
     }
 
 def numpy_examiner(numpy_folder_root: str | Path, print_paths: bool = False):
