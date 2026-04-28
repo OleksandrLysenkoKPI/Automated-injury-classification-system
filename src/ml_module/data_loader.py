@@ -1,8 +1,11 @@
-import os
+import torchvision.transforms.functional as TF
+import cv2
+import random
 import numpy as np
 import torch
 from pathlib import Path
 from PIL import Image
+from torchvision.transforms import v2
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from .ml_utils import get_dataset_paths, verify_dataset_processing
 from ..logger_module.logger import CustomLogger
@@ -20,6 +23,17 @@ class KneeDataset(Dataset):
         self.labels = []
         
         self.file_ext = self._detect_extension()
+        
+        if self.is_train:
+            self.train_transforms = v2.Compose([
+                v2.RandomResizedCrop(size=128, scale=(0.8, 1.0), antialias=True),
+                v2.RandomHorizontalFlip(p=0.5),
+                v2.RandomRotation(degrees=(-15, 15)),
+                v2.ColorJitter(brightness=0.3, contrast=0.3),
+                v2.RandomAffine(degrees=0, translate=(0.1, 0.1)),  # type: ignore
+            ])
+            
+        self.normalize = v2.Normalize(mean=[0.449], std=[0.226])
         
         try:
             self.classes = sorted([d.name for d in self.root_dir.iterdir() if d.is_dir()])
@@ -61,43 +75,51 @@ class KneeDataset(Dataset):
             self.cached_data.append(tensor)
             self.labels.append(label)
         logger.info(f"Successfully cached {len(self.cached_data)} samples.")
-        
-        return torch.clamp(tensor, 0.0, 1.0)
     
     def _load_file(self, file_path: Path):
         """Reading logic depending on the extension"""
         if self.file_ext == '.npy':
-            img = np.load(file_path).astype(np.float16)
-            tensor = torch.from_numpy(img)
-            if tensor.ndim == 3:
-                tensor = tensor.unsqueeze(0)
-            elif tensor.ndim == 2:
-                tensor = tensor.unsqueeze(0)
+            data = np.load(file_path).astype(np.float32)
         else:
-            with Image.open(file_path) as img:
-                data = np.array(img.convert('L'), dtype=np.float32) / 255.0
-                tensor = torch.from_numpy(data).unsqueeze(0)
-        
-        return torch.clamp(tensor, 0.0, 1.0)
+            try:
+                data = cv2.imdecode(np.fromfile(str(file_path), dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
+                
+                if data is None:
+                    with Image.open(file_path) as img:
+                        data = np.array(img.convert('L'))
+            except Exception as e:
+                logger.error(f"Error reading file {file_path}: {e}")
+                raise e
+                    
+            data = data.astype(np.float32) / 255.0
+            
+        tensor = torch.from_numpy(data)
+        if tensor.ndim == 2: 
+            tensor = tensor.unsqueeze(0) # [1, H, W]
+            
+        tensor = torch.clamp(tensor, 0.0, 1.0)
+        return tensor
     
     def __len__(self):
         return len(self.samples)
     
     def __getitem__(self, index):
         if self.cache_in_ram:
-            tensor, label = self.cached_data[index], self.labels[index]
+            # Clone to prevent accidental modification of cached tensor
+            tensor = self.cached_data[index].clone() 
+            label = self.labels[index]
         else:
             file_path, label = self.samples[index]
             tensor = self._load_file(file_path)
 
         if self.is_train:
-            if torch.rand(1) > 0.5:
-                tensor = torch.flip(tensor, dims=[-1]) # Horizontal
-            if torch.rand(1) > 0.5:
-                tensor = torch.flip(tensor, dims=[-2]) # Vertical (orientation change)
+            tensor = self.train_transforms(tensor)
             
-            noise = torch.randn_like(tensor) * 0.002
-            tensor = tensor + noise
+            if torch.rand(1) > 0.5:
+                noise_std = random.uniform(0.001, 0.005)
+                tensor += torch.randn_like(tensor) * noise_std
+            
+        tensor = self.normalize(tensor)
             
         return tensor.float(), label
 
@@ -110,18 +132,16 @@ def load_dataset(batch_size: int = 16, mode: str = "png", load_augmented: bool =
             train_key = "train_augmented_png" if load_augmented else "train_png"
             val_key = "val_png"
             test_key = "test_png"
-            drop_last = False
         else:
             train_key = "train_augmented_npy" if load_augmented else "train_npy"
             val_key = "val_npy"
             test_key = "test_npy"
-            drop_last = True
 
         train_dataset = KneeDataset(paths[train_key], is_train=True, cache_in_ram=cache_in_ram)
         val_dataset = KneeDataset(paths[val_key], is_train=False, cache_in_ram=cache_in_ram)
         test_dataset = KneeDataset(paths[test_key], is_train=False, cache_in_ram=False)
         
-        train_workers = 0 if cache_in_ram else 4
+        train_workers = 0 if cache_in_ram else 8
         
         target_list = torch.tensor([sample[1] for sample in train_dataset.samples])
         class_count = [torch.sum(target_list == i).item() for i in range(len(train_dataset.classes))]
@@ -130,7 +150,7 @@ def load_dataset(batch_size: int = 16, mode: str = "png", load_augmented: bool =
         
         sampler = WeightedRandomSampler(weights=sample_weights.tolist(), num_samples=len(sample_weights), replacement=True)
         
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler, num_workers=train_workers, pin_memory=True, drop_last=drop_last)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler, num_workers=train_workers, pin_memory=True, drop_last=(mode == 'npy'), persistent_workers=(train_workers > 0))
         val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=train_workers, pin_memory=True)
         test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=True)
 
