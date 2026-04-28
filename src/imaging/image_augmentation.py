@@ -24,7 +24,6 @@ def add_noise_to_png(img_array: np.ndarray, intensity: float = 0.02):
     noised_img = img_array.astype(np.float32) + noise
     return np.clip(noised_img, 0, 255).astype(np.uint8)
 
-# TODO: Write augmentation function for png images
 def augment_and_save_png_dataset(root_path: str | Path, std_threshold: float = 10.0):
     """Augments given PNG image and saves it in a separate folder. Includes several augmentations:
     1. Original.
@@ -50,7 +49,7 @@ def augment_and_save_png_dataset(root_path: str | Path, std_threshold: float = 1
         target_folder = output_base / relative_path
         target_folder.mkdir(parents=True, exist_ok=True)
         
-        logger.info(f"Processing folder: {relative_path}. Found {len(png_files)} slices.")
+        logger.info(f"Processing folder: {relative_path}. Found {len(png_files)} PNG slices.")
 
         for file_name in png_files:
             try:
@@ -73,36 +72,36 @@ def augment_and_save_png_dataset(root_path: str | Path, std_threshold: float = 1
                 
                 # Brightness
                 enhancer = ImageEnhance.Brightness(img)
-                bright = enhancer.enhance(1.2)
-                dark = enhancer.enhance(0.8)
+                bright = enhancer.enhance(1.4)
+                dark = enhancer.enhance(0.6)
                 bright.save(target_folder / f"{base_name}_bright.png")
                 dark.save(target_folder / f"{base_name}_dark.png")
                 
                 # Noise
-                noised_data = add_noise_to_png(data, intensity=0.01)
+                noised_data = add_noise_to_png(data, intensity=0.03)
                 Image.fromarray(noised_data).save(target_folder / f"{base_name}_noised.png")
                 
                 # --- Combinations ---
                 # Flip + Brightness
                 enhancer_flip = ImageEnhance.Brightness(flipped_img)
                 
-                flipped_dark = enhancer_flip.enhance(0.8)
+                flipped_dark = enhancer_flip.enhance(0.6)
                 flipped_dark.save(target_folder / f"{base_name}_flipped_dark.png")
                 
-                flipped_bright = enhancer_flip.enhance(1.2)
+                flipped_bright = enhancer_flip.enhance(1.4)
                 flipped_bright.save(target_folder / f"{base_name}_flipped_bright.png")
                 
                 # Flip + Noise
-                flipped_noised = add_noise_to_png(np.array(flipped_img), intensity=0.01)
+                flipped_noised = add_noise_to_png(np.array(flipped_img), intensity=0.03)
                 Image.fromarray(flipped_noised).save(target_folder / f"{base_name}_flipped_noised.png")
                 
                 # Heavy Combinations
                 # Flip + Dark + Noise
-                heavy_data = add_noise_to_png(np.array(flipped_dark), intensity=0.01)
+                heavy_data = add_noise_to_png(np.array(flipped_dark), intensity=0.03)
                 Image.fromarray(heavy_data).save(target_folder / f"{base_name}_heavy.png")
                 
                 # Flip + Bright + Noise
-                heavy_bright = add_noise_to_png(np.array(flipped_bright), intensity=0.01)
+                heavy_bright = add_noise_to_png(np.array(flipped_bright), intensity=0.03)
                 Image.fromarray(heavy_bright).save(target_folder / f"{base_name}_heavy_bright.png")
             except Exception as e:
                 logger.error(f"Failed to augment {file_name}: {e}")
@@ -123,20 +122,19 @@ def augment_and_save_npy_dataset(root_path: str | Path):
         root_path (str | Path): Path to folder with data for augmentation
     """
     root_path = Path(root_path)
-    output_base = root_path.parent / "train_augmented_npy"
+    output_base = root_path.parents[1] / "train_augmented_npy"
     output_base.mkdir(parents=True, exist_ok=True)
     
     for root, _, files in os.walk(root_path):
         npy_files = [f for f in files if f.endswith('.npy')]
-            
         if not npy_files:
             continue
         
-        class_name = Path(root).name
-        target_folder = output_base / class_name
-        target_folder.mkdir(exist_ok=True)
+        relative_path = Path(root).relative_to(root_path)
+        target_folder = output_base / relative_path
+        target_folder.mkdir(parents=True, exist_ok=True)
         
-        logger.info(f"Processing class: {class_name}. Found {len(npy_files)} files")
+        logger.info(f"Processing folder: {relative_path}. Found {len(npy_files)} NumPy files.")
         
         for file_name in npy_files:
             try:
