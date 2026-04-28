@@ -110,10 +110,12 @@ def load_dataset(batch_size: int = 16, mode: str = "png", load_augmented: bool =
             train_key = "train_augmented_png" if load_augmented else "train_png"
             val_key = "val_png"
             test_key = "test_png"
+            drop_last = False
         else:
             train_key = "train_augmented_npy" if load_augmented else "train_npy"
             val_key = "val_npy"
             test_key = "test_npy"
+            drop_last = True
 
         train_dataset = KneeDataset(paths[train_key], is_train=True, cache_in_ram=cache_in_ram)
         val_dataset = KneeDataset(paths[val_key], is_train=False, cache_in_ram=cache_in_ram)
@@ -128,7 +130,7 @@ def load_dataset(batch_size: int = 16, mode: str = "png", load_augmented: bool =
         
         sampler = WeightedRandomSampler(weights=sample_weights.tolist(), num_samples=len(sample_weights), replacement=True)
         
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler, num_workers=train_workers, pin_memory=True)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler, num_workers=train_workers, pin_memory=True, drop_last=drop_last)
         val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=train_workers, pin_memory=True)
         test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=True)
 

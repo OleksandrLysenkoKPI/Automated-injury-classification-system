@@ -4,7 +4,7 @@ from pathlib import Path
 from PIL import Image, ImageEnhance
 from ..logger_module.logger import CustomLogger
 
-logger = CustomLogger("Imaging_Augmentation_log")
+logger = CustomLogger("Imaging_augmentation_log")
 
 def is_valid_slice(img_array: np.ndarray, std_threshold: float = 10.0):
     """Checks if slice is not empty (black)

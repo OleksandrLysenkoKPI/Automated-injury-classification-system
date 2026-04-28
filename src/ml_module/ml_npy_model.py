@@ -15,7 +15,7 @@ from ..logger_module.logger import CustomLogger
 from .data_loader import load_dataset
 from sklearn.metrics import classification_report
 
-logger = CustomLogger("ML_module_log")
+logger = CustomLogger("ML_NPY_model_log")
 
 class DetailBlock3D(nn.Module):
     def __init__(self, in_c, out_c, stride=1):
@@ -241,10 +241,10 @@ def evaluate_model(
     logger.info("Evaluation complete.")
 
 
-def start_model_pipeline(
+def start_npy_model_pipeline(
     epochs: int = 30, 
     batch_size: int = 8, 
-    target_shape: tuple[int, int, int] = (32, 128, 128), 
+    mode: str = 'png', 
     save_file_name: str = "knee_3d_pathology_model",
     use_augmented: bool = True,
     cache_in_ram: bool = False
@@ -254,11 +254,16 @@ def start_model_pipeline(
     Args:
         epochs (int, optional): Defaults to 5.
         batch_size (int, optional): Defaults to 8.
-        target_shape (tuple[int, int, int], optional): Defaults to (32, 256, 256).
+        mode (str): Can be 'png' or 'npy'. Defaults to 'png'.
         save_file_name (str, optional): Defaults to "knee_3d_pathology_model".
     """
     cudnn.benchmark = True
-    train_loader, val_loader, test_loader, classes = load_dataset(target_shape=target_shape, batch_size=batch_size, load_augmented=use_augmented, cache_in_ram=cache_in_ram)
+    train_loader, val_loader, test_loader, classes = load_dataset(
+        batch_size=batch_size,
+        mode=mode, 
+        load_augmented=use_augmented, 
+        cache_in_ram=cache_in_ram
+    )
 
     model = KneeResidualAttentionNet(num_classes=len(classes))
     device = torch.device("cuda")
