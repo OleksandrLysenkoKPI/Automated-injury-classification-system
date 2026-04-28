@@ -4,6 +4,7 @@ from src.imaging.image_augmentation import augment_and_save_npy_dataset, augment
 from src.ml_module.ml_utils import numpy_examiner
 from src.ml_module.data_loader import load_dataset
 from src.ml_module.ml_npy_model import start_npy_model_pipeline
+from src.ml_module.ml_png_model import start_png_model_pipeline
 from dotenv import load_dotenv
 import os
 
@@ -18,7 +19,8 @@ def print_menu():
     print("5 -- Augment NumPy dataset")
     print("55 -- Augment PNG dataset")
     print("6 -- Load dataset")
-    print("7 -- Start model pipeline")
+    print("7 -- Start NPY model pipeline")
+    print("77 -- Start PNG model pipeline")
     print("0 -- Exit")
     print("+"*30)
     print("9 -- 3 in 1: Convert, Split, Augment")
@@ -76,6 +78,8 @@ if __name__ == "__main__":
                 load_dataset(batch_size=64, mode="npy", load_augmented=True, cache_in_ram=True)
             elif choice_input == 7:
                 start_npy_model_pipeline(epochs=50, batch_size=4, mode="npy", save_file_name="knee_3d_pathology_model", use_augmented=True, cache_in_ram=cache_in_ram)
+            elif choice_input == 77:
+                start_png_model_pipeline(epochs=50, batch_size=128, mode="png", save_file_name="knee_2d_pathology_model", use_augmented=True, cache_in_ram=cache_in_ram)
             elif choice_input == 9:
                 processor.process_all_conditions(dataset_folder, converted_png_folder, converted_npy_folder, target_shape=target_shape, target_spacing=target_spacing)
                 split_data(converted_npy_folder, converted_png_folder, prepared_data_folder)

@@ -244,7 +244,7 @@ def evaluate_model(
 def start_npy_model_pipeline(
     epochs: int = 30, 
     batch_size: int = 8, 
-    mode: str = 'png', 
+    mode: str = 'npy', 
     save_file_name: str = "knee_3d_pathology_model",
     use_augmented: bool = True,
     cache_in_ram: bool = False
