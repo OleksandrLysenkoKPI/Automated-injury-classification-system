@@ -26,12 +26,15 @@ class KneeDataset(Dataset):
         
         if self.is_train:
             self.train_transforms = v2.Compose([
-                v2.RandomResizedCrop(size=128, scale=(0.8, 1.0), antialias=True),
-                v2.RandomHorizontalFlip(p=0.5),
-                v2.RandomRotation(degrees=(-15, 15)),
-                v2.ColorJitter(brightness=0.3, contrast=0.3),
-                v2.RandomAffine(degrees=0, translate=(0.1, 0.1)),  # type: ignore
-            ])
+            v2.RandomResizedCrop(size=128, scale=(0.85, 1.0), antialias=True),
+            v2.RandomHorizontalFlip(p=0.5),
+            v2.RandomVerticalFlip(p=0.3),
+            v2.RandomRotation(degrees=(-15, 15)),
+            v2.RandomAffine(degrees=0, translate=(0.1, 0.1), shear=5), # type: ignore
+            v2.ElasticTransform(alpha=15.0, sigma=2.0),
+            v2.GaussianBlur(kernel_size=3, sigma=(0.1, 1.0)),
+            v2.ColorJitter(brightness=0.3, contrast=0.3),
+        ])
             
         self.normalize = v2.Normalize(mean=[0.449], std=[0.226])
         
