@@ -34,8 +34,11 @@ class KneeResNet(nn.Module):
         
         num_ftrs = self.model.fc.in_features
         self.model.fc = nn.Sequential( # type: ignore
-            nn.Dropout(p=0.5),
-            nn.Linear(num_ftrs, num_classes)
+            nn.Linear(num_ftrs, 256),
+            nn.BatchNorm1d(256),
+            nn.ReLU(),
+            nn.Dropout(p=0.3),
+            nn.Linear(256, num_classes)
         )
 
     def forward(self, x):
@@ -118,7 +121,7 @@ def train_model(
     best_val_acc = 0.0
     best_model_state = None
     best_val_loss = float('inf')
-    early_stopping = EarlyStopping(patience=25, min_delta=0.01, max_gap=25.0,verbose=True)
+    early_stopping = EarlyStopping(patience=15, min_delta=0.01, max_gap=25.0,verbose=True)
     
     current_stage = 0
     
@@ -126,14 +129,21 @@ def train_model(
     
     for epoch in range(epochs):
         
-        if early_stopping.counter >= 8 and current_stage < 2:
+        if early_stopping.counter >= 5 and current_stage < 2:
             current_stage += 1
             unfreeze_layers(model, current_stage)
             early_stopping.counter = 0
             
-            trainable_params = [p for p in model.parameters() if p.requires_grad]
-            optimizer = optim.SGD(trainable_params, lr=1e-4, momentum=0.9, weight_decay=0.1, nesterov=True)
-            scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs-epoch, eta_min=1e-6)
+            param_groups = [
+                {'params': [p for n, p in model.model.named_parameters() if 'layer' in n and p.requires_grad], 
+                 'lr': 5e-5, 'weight_decay': 0.005},
+                
+                {'params': model.model.conv1.parameters(), 'lr': 5e-5, 'weight_decay': 0.005},
+                
+                {'params': model.model.fc.parameters(), 'lr': 2e-4, 'weight_decay': 0.1}
+            ]
+            optimizer = optim.AdamW(param_groups)
+            scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs-epoch)
         
         model.train()
         train_loss, train_correct, train_total = 0.0, 0, 0

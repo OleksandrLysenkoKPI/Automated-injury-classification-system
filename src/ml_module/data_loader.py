@@ -12,6 +12,9 @@ from ..logger_module.logger import CustomLogger
 
 logger = CustomLogger("DataLoader_log")
 
+def is_valid_slice(img_array: np.ndarray, std_threshold: float = 10.0):
+    return np.std(img_array * 255.0) > std_threshold
+
 class KneeDataset(Dataset):
     def __init__(self, root_dir: str | Path, is_train: bool = False, cache_in_ram: bool = False):
         self.root_dir = Path(root_dir)
@@ -26,14 +29,10 @@ class KneeDataset(Dataset):
         
         if self.is_train:
             self.train_transforms = v2.Compose([
-            v2.RandomResizedCrop(size=128, scale=(0.85, 1.0), antialias=True),
+            v2.RandomResizedCrop(size=128, scale=(0.9, 1.0), antialias=True),
             v2.RandomHorizontalFlip(p=0.5),
-            v2.RandomVerticalFlip(p=0.3),
-            v2.RandomRotation(degrees=(-15, 15)),
-            v2.RandomAffine(degrees=0, translate=(0.1, 0.1), shear=5), # type: ignore
-            v2.ElasticTransform(alpha=15.0, sigma=2.0),
-            v2.GaussianBlur(kernel_size=3, sigma=(0.1, 1.0)),
-            v2.ColorJitter(brightness=0.3, contrast=0.3),
+            v2.RandomRotation(degrees=(-10, 10)),
+            v2.ColorJitter(brightness=0.2, contrast=0.2),
         ])
             
         self.normalize = v2.Normalize(mean=[0.449], std=[0.226])
@@ -41,19 +40,22 @@ class KneeDataset(Dataset):
         try:
             self.classes = sorted([d.name for d in self.root_dir.iterdir() if d.is_dir()])
             self.class_to_idx = {cls_name: i for i, cls_name in enumerate(self.classes)}
+            valid_count = 0
         
             for class_name in self.classes:
                 class_dir = self.root_dir / class_name
                 class_idx = self.class_to_idx[class_name]
                 found_files = list(class_dir.rglob(f"*{self.file_ext}"))
-                
                 for f in found_files:
-                    self.samples.append((f, class_idx))
+                    raw_data = cv2.imdecode(np.fromfile(str(f), dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
+                    if raw_data is not None and is_valid_slice(raw_data):
+                        self.samples.append((f, class_idx))
+                        valid_count += 1
             
             if not self.samples:
                 raise FileNotFoundError(f"No {self.file_ext} files found in {self.root_dir}")
 
-            logger.info(f"Dataset initialized: {len(self.samples)} samples found in {len(self.classes)} classes.")
+            logger.info(f"Dataset initialized: {valid_count} valid samples found in {len(self.classes)} classes.")
         
             if self.cache_in_ram:
                 self._load_to_ram()
