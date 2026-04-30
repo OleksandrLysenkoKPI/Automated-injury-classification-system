@@ -12,7 +12,7 @@ def print_menu():
     print("\n" + "="*30)
     print("KNEE PATHOLOGY PIPELINE")
     print("="*30)
-    print("1 -- Convert DICOM files from dataset")
+    print("1 -- Convert DICOM files from datasets")
     print("2 -- Verify DICOM to NumPy file conversion")
     print("3 -- Examine NumPy files")
     print("4 -- Split train data")
@@ -32,7 +32,9 @@ if __name__ == "__main__":
     
     load_dotenv()
     
-    dataset_folder = os.getenv('KNEE_CONDITIONS_DATASET')
+    conditions_dataset_folder = os.getenv('KNEE_CONDITIONS_DATASET')
+    knee_dataset_folder = os.getenv('KNEE_DATASET')
+    
     converted_npy_folder = "data/converted_data/converted_NumPy"
     converted_png_folder = "data/converted_data/converted_PNG"
     prepared_data_folder = "data/prepared_data"
@@ -63,7 +65,14 @@ if __name__ == "__main__":
             choice_input = int(choice_input)
             
             if choice_input == 1:
-                processor.process_all_conditions(dataset_folder, converted_png_folder, converted_npy_folder, target_shape=target_shape, target_spacing=target_spacing)
+                processor.process_all_conditions(
+                    conditions_root_dir=conditions_dataset_folder, 
+                    knee_root_dir=knee_dataset_folder, 
+                    output_base_png=converted_png_folder, 
+                    output_base_npy=converted_npy_folder, 
+                    target_shape=target_shape, 
+                    target_spacing=target_spacing
+                )
             elif choice_input == 2:
                 verify_npy_conversion(processor=processor, dicom_path=test_dicom_image, npy_path=test_numpy_image)
             elif choice_input == 3:
@@ -77,11 +86,32 @@ if __name__ == "__main__":
             elif choice_input == 6:
                 load_dataset(batch_size=64, mode="npy", load_augmented=True, cache_in_ram=True)
             elif choice_input == 7:
-                start_npy_model_pipeline(epochs=50, batch_size=4, mode="npy", save_file_name="knee_3d_pathology_model", use_augmented=False, cache_in_ram=cache_in_ram)
+                start_npy_model_pipeline(
+                    epochs=50, 
+                    batch_size=4, 
+                    mode="npy", 
+                    save_file_name="knee_3d_pathology_model", 
+                    use_augmented=False, 
+                    cache_in_ram=cache_in_ram
+                )
             elif choice_input == 77:
-                start_png_model_pipeline(epochs=50, batch_size=64, mode="png", save_file_name="knee_2d_pathology_model", use_augmented=False, cache_in_ram=cache_in_ram)
+                start_png_model_pipeline(
+                    epochs=50, 
+                    batch_size=64, 
+                    mode="png", 
+                    save_file_name="knee_2d_pathology_model", 
+                    use_augmented=False, 
+                    cache_in_ram=cache_in_ram
+                )
             elif choice_input == 9:
-                processor.process_all_conditions(dataset_folder, converted_png_folder, converted_npy_folder, target_shape=target_shape, target_spacing=target_spacing)
+                processor.process_all_conditions(
+                    conditions_root_dir=conditions_dataset_folder, 
+                    knee_root_dir=knee_dataset_folder, 
+                    output_base_png=converted_png_folder, 
+                    output_base_npy=converted_npy_folder, 
+                    target_shape=target_shape, 
+                    target_spacing=target_spacing
+                )
                 split_data(converted_npy_folder, converted_png_folder, prepared_data_folder)
                 augment_and_save_npy_dataset(npy_data_to_augment)
             elif choice_input == 10:

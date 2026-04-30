@@ -1,4 +1,5 @@
 import os
+import struct
 import pydicom
 from pydicom.pixels.processing import apply_rescale
 import numpy as np
@@ -24,11 +25,26 @@ class DICOMProcessor:
             return False
         
         try:
-            self.ds = pydicom.dcmread(dicom_path)
+            self.ds = pydicom.dcmread(dicom_path, force=True)
+        
+            pixel_tags = ['PixelData', 'FloatPixelData', 'DoubleFloatPixelData']
+            if not any(tag in self.ds for tag in pixel_tags):
+                logger.warning(f"Skipping non-image DICOM (Report/SR): {os.path.basename(dicom_path)}")
+                return False
+
+            _ = self.ds.pixel_array
+            
             self._pixels_hu = None
             return True
+        except AttributeError:
+            logger.warning(f"File has no pixel attribute: {os.path.basename(dicom_path)}")
+            return False
+        except (OSError, struct.error) as e:
+            # Handled "No tag to read" and "unpack requires a buffer"
+            logger.warning(f"Corrupted structure in {os.path.basename(dicom_path)}: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Failed to load {dicom_path}: {e}")
+            logger.error(f"Unexpected error in {os.path.basename(dicom_path)}: {e}")
             return False
     
     @property
@@ -103,6 +119,7 @@ class DICOMProcessor:
         """Applies the full preprocessing pipeline to the current DICOM object."""
         try:
             data = self.pixels_hu.astype(np.float32)
+            
             data = wavelet_denoising_3d(data)
             
             logger.info(f"Resampling from {self.spacing} to {target_spacing}...")
@@ -175,12 +192,23 @@ class DICOMProcessor:
         return current_idx
                     
     @staticmethod
-    def process_single_patient(patient_path, condition_name, idx, output_base_png, output_base_npy, target_shape, target_spacing):
+    def process_single_patient(patient_path: Path, dataset_name, condition_name, idx, output_base_png, output_base_npy, target_shape, target_spacing):
         processor = DICOMProcessor()
         
-        patient_label = f"patient#{idx}"
-        target_png = os.path.join(output_base_png, condition_name, patient_label)
-        target_npy = os.path.join(output_base_npy, condition_name, patient_label)
+        side = ""
+        folder_name = patient_path.name.upper()
+        if folder_name.endswith('L'):
+            side = "_L"
+        elif folder_name.endswith('R'):
+            side = "_R"
+            
+        patient_label = f"patient#{idx}{side}"
+        
+        safe_condition = condition_name if condition_name else ""
+        sub_path = os.path.join(dataset_name, safe_condition, patient_label)
+        
+        target_png = os.path.join(output_base_png, sub_path)
+        target_npy = os.path.join(output_base_npy, sub_path)
         
         os.makedirs(target_png, exist_ok=True)
         os.makedirs(target_npy, exist_ok=True)
@@ -199,31 +227,51 @@ class DICOMProcessor:
                 )
         return file_counter - 1
     
-    def process_all_conditions(self, root_dir, output_base_png, output_base_npy, target_shape=(64, 160, 160), target_spacing=(1.0, 1.0, 1.0)):
+    def process_all_conditions(self, conditions_root_dir, knee_root_dir, output_base_png, output_base_npy, target_shape=(64, 160, 160), target_spacing=(1.0, 1.0, 1.0)):
         """
         Iterates through all the branch of a specified path and converts files,
         recreating this folder structure in output directories: `Condition/patient/data`
         """
-        root_path = Path(root_dir)
-        condition_paths = {d for d in root_path.iterdir() if d.is_dir()}
-        
         with ProcessPoolExecutor() as executor:
-            for condition_path in condition_paths:
-                condition_name = condition_path.name
-                logger.info(f"Processing condition: {condition_name}")
+            all_futures = []
+            
+            conditions_root = Path(conditions_root_dir)
+            if conditions_root.exists():
+                logger.info(f"Processing conditions dataset: {conditions_root.name}")
+                condition_paths = {d for d in conditions_root.iterdir() if d.is_dir()}
                 
-                patient_folders = sorted([d for d in condition_path.iterdir() if d.is_dir()])
-                
-                futures = []
-                for idx, patient_path in enumerate(patient_folders, start=1):
-                    futures.append(
-                        executor.submit(
-                            DICOMProcessor.process_single_patient,
-                            patient_path, condition_name, idx,
-                            output_base_png, output_base_npy,
-                            target_shape, target_spacing
+                for condition_path in condition_paths:
+                    condition_name = condition_path.name
+                    logger.info(f"Processing condition: {condition_name}")
+                    patient_folders = sorted([d for d in condition_path.iterdir() if d.is_dir()])
+
+                    for idx, patient_path in enumerate(patient_folders, start=1):
+                        all_futures.append(
+                            executor.submit(
+                                DICOMProcessor.process_single_patient,
+                                patient_path, "conditions_dataset",
+                                condition_name, idx,
+                                output_base_png, output_base_npy,
+                                target_shape, target_spacing
+                            )
                         )
-                    )
-                    
-                total_files = sum(f.result() for f in futures)
-                logger.info(f"Finished {condition_path}. Total files {total_files}.")
+            
+            knee_root_dir = Path(knee_root_dir)    
+            if knee_root_dir.exists():
+                logger.info(f"Processing healthy knee dataset: {knee_root_dir.name}")
+                patient_folders = sorted([d for d in knee_root_dir.iterdir() if d.is_dir()])
+                
+                for idx, patient_path in enumerate(patient_folders, start=1):
+                        all_futures.append(
+                            executor.submit(
+                                DICOMProcessor.process_single_patient,
+                                patient_path, "knee_dataset",
+                                None, idx,
+                                output_base_png, output_base_npy,
+                                target_shape, target_spacing
+                            )
+                        )
+                
+                
+            total_files = sum(f.result() for f in all_futures)
+            logger.info(f"All datasets processed. Total files saved: {total_files}.")

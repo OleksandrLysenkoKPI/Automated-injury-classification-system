@@ -75,13 +75,15 @@ def wavelet_denoising_3d(data):
     """
     Noise reduction in 3D data using wavelet transformation.
     """
-    sigma_est = estimate_sigma(data, average_sigmas=True)
+    lower = np.percentile(data, 1)
+    upper = np.percentile(data, 99)
+    data = np.clip(data, lower, upper)
     
     denoised_data = denoise_wavelet(
         data,
         method='BayesShrink',
         mode='soft',
-        wavelet='db1',
+        wavelet='db2',
         rescale_sigma=True
     )
     

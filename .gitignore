@@ -4,6 +4,8 @@ logs
 *.png
 *.npy
 *.pth
+*.svg
+*.gv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
