@@ -3,6 +3,7 @@ import cv2
 import random
 import numpy as np
 import torch
+import os
 from pathlib import Path
 from PIL import Image
 from torchvision.transforms import v2
@@ -13,11 +14,14 @@ from ..logger_module.logger import CustomLogger
 logger = CustomLogger("DataLoader_log")
 
 def is_valid_slice(img_array: np.ndarray, std_threshold: float = 10.0):
-    return np.std(img_array * 255.0) > std_threshold
+    """Checks if slice is empty (black)"""
+    if img_array is None: return False
+    return np.std(img_array.astype(np.float32)) > std_threshold
 
 class KneeDataset(Dataset):
-    def __init__(self, root_dir: str | Path, is_train: bool = False, cache_in_ram: bool = False):
+    def __init__(self, root_dir: str | Path, mode: str = "png", is_train: bool = False, cache_in_ram: bool = False):
         self.root_dir = Path(root_dir)
+        self.mode = mode.lower()
         self.is_train = is_train
         self.cache_in_ram = cache_in_ram
         
@@ -25,142 +29,154 @@ class KneeDataset(Dataset):
         self.cached_data = []
         self.labels = []
         
-        self.file_ext = self._detect_extension()
+        # Binary classification mapping
+        self.group_map = {
+            'healthy': 0,
+            'гонартроз': 1, 
+            'хондромаляція виростків': 1, 
+            'хондромаляція надколінка': 1,
+            'меніски': 1, 
+            'часткове пошкодження пхз': 1, 
+            'медіапателярна складка': 1
+        }
+        self.classes = ['Healthy', 'Pathology']
         
-        if self.is_train:
+        if self.is_train and self.mode == "png":
             self.train_transforms = v2.Compose([
-            v2.RandomResizedCrop(size=128, scale=(0.9, 1.0), antialias=True),
-            v2.RandomHorizontalFlip(p=0.5),
-            v2.RandomRotation(degrees=(-10, 10)),
-            v2.ColorJitter(brightness=0.2, contrast=0.2),
-        ])
+                v2.RandomResizedCrop(size=128, scale=(0.9, 1.0), antialias=True),
+                v2.RandomHorizontalFlip(p=0.5),
+                v2.RandomRotation(degrees=(-10, 10)),
+                v2.ColorJitter(brightness=0.2, contrast=0.2),
+            ])
+        else:
+            self.train_transforms = None
             
         self.normalize = v2.Normalize(mean=[0.449], std=[0.226])
         
-        try:
-            self.classes = sorted([d.name for d in self.root_dir.iterdir() if d.is_dir()])
-            self.class_to_idx = {cls_name: i for i, cls_name in enumerate(self.classes)}
-            valid_count = 0
+        self._build_dataset()
         
-            for class_name in self.classes:
-                class_dir = self.root_dir / class_name
-                class_idx = self.class_to_idx[class_name]
-                found_files = list(class_dir.rglob(f"*{self.file_ext}"))
-                for f in found_files:
-                    raw_data = cv2.imdecode(np.fromfile(str(f), dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
-                    if raw_data is not None and is_valid_slice(raw_data):
-                        self.samples.append((f, class_idx))
-                        valid_count += 1
-            
-            if not self.samples:
-                raise FileNotFoundError(f"No {self.file_ext} files found in {self.root_dir}")
+        
+    def _build_dataset(self):
+        """Collects path files and filters out empty slices"""
+        if not self.root_dir.exists():
+            logger.warning(f"Path not found: {self.root_dir}")
+            return
 
-            logger.info(f"Dataset initialized: {valid_count} valid samples found in {len(self.classes)} classes.")
-        
-            if self.cache_in_ram:
-                self._load_to_ram()
+        total_files_found = 0
+        for condition_folder in [d for d in self.root_dir.iterdir() if d.is_dir()]:
+            condition_name = condition_folder.name.lower()
+            
+            if condition_name not in self.group_map:
+                continue
                 
-        except Exception as e:
-            logger.error(f"Failed to initialize dataset: {e}")
-            raise
+            label = self.group_map[condition_name]
+            ext = f"*.{self.mode}"
+            all_files = list(condition_folder.rglob(ext))
+            
+            for f in all_files:
+                if self.mode == "png":
+                    try:
+                        img_data = np.fromfile(str(f), dtype=np.uint8)
+                        img = cv2.imdecode(img_data, cv2.IMREAD_GRAYSCALE)
+                        
+                        if img is not None and is_valid_slice(img):
+                            self.samples.append((f, label))
+                            total_files_found += 1
+                    except Exception as e:
+                        continue
+                else:
+                    self.samples.append((f, label))
+                    total_files_found += 1
+
+        logger.info(f"Initialized {self.mode.upper()} dataset: {len(self.samples)} files in {len(self.classes)} groups.")
         
-    def _detect_extension(self):
-        """Looks for the first file found in subfolders to understand the format"""
-        for f in self.root_dir.rglob('*'):
-            if f.is_file() and f.suffix in ['.npy', '.png']:
-                return f.suffix
-        
-        logger.warning(f"Could not find any .npy or .png files in {self.root_dir}")
-        return '.npy'
-    
-    def _load_to_ram(self):
-        logger.info(f"Loading {self.file_ext} dataset into RAM...")
-        for file_path, label in self.samples:
-            tensor = self._load_file(file_path)
-            self.cached_data.append(tensor)
-            self.labels.append(label)
-        logger.info(f"Successfully cached {len(self.cached_data)} samples.")
+        if self.cache_in_ram and self.samples:
+            self._load_to_ram()
     
     def _load_file(self, file_path: Path):
-        """Reading logic depending on the extension"""
-        if self.file_ext == '.npy':
-            data = np.load(file_path).astype(np.float32)
-        else:
-            try:
-                data = cv2.imdecode(np.fromfile(str(file_path), dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
+        """Multi format file reading"""
+        try:
+            if self.mode == 'npy':
+                data = np.load(file_path).astype(np.float32)
+                tensor = torch.from_numpy(data)
+                if tensor.ndim == 3:
+                    tensor = tensor.unsqueeze(0)
+                tensor = (tensor - tensor.mean()) / (tensor.std() + 1e-6)
+                return tensor
+            else:
+                # PNG: np.fromfile to work with cyrillic
+                img_data = np.fromfile(str(file_path), dtype=np.uint8)
+                data = cv2.imdecode(img_data, cv2.IMREAD_GRAYSCALE)
                 
-                if data is None:
+                if data is None: # PIL as a fallback
                     with Image.open(file_path) as img:
                         data = np.array(img.convert('L'))
-            except Exception as e:
-                logger.error(f"Error reading file {file_path}: {e}")
-                raise e
-                    
-            data = data.astype(np.float32) / 255.0
-            
-        tensor = torch.from_numpy(data)
-        if tensor.ndim == 2: 
-            tensor = tensor.unsqueeze(0) # [1, H, W]
-            
-        tensor = torch.clamp(tensor, 0.0, 1.0)
-        return tensor
+                
+                data = data.astype(np.float32) / 255.0
+                return torch.from_numpy(data).unsqueeze(0)
+        except Exception as e:
+            logger.error(f"Loading error {file_path}: {e}")
+            return torch.zeros((1, 128, 128))
+
+    def _load_to_ram(self):
+        logger.info(f"Caching {self.mode} data into RAM...")
+        for file_path, label in self.samples:
+            self.cached_data.append(self._load_file(file_path))
+            self.labels.append(label)
+        logger.info("RAM caching complete.")
     
     def __len__(self):
         return len(self.samples)
     
     def __getitem__(self, index):
         if self.cache_in_ram:
-            # Clone to prevent accidental modification of cached tensor
-            tensor = self.cached_data[index].clone() 
+            tensor = self.cached_data[index].clone()
             label = self.labels[index]
         else:
             file_path, label = self.samples[index]
             tensor = self._load_file(file_path)
 
-        if self.is_train:
-            tensor = self.train_transforms(tensor)
-            
-            if torch.rand(1) > 0.5:
-                noise_std = random.uniform(0.001, 0.005)
-                tensor += torch.randn_like(tensor) * noise_std
-            
-        tensor = self.normalize(tensor)
+        # Png augmentation in train mode
+        if self.mode == "png":
+            if self.is_train and self.train_transforms:
+                tensor = self.train_transforms(tensor)
+                # Noise
+                if torch.rand(1) > 0.5:
+                    tensor += torch.randn_like(tensor) * random.uniform(0.001, 0.005)
+            tensor = self.normalize(tensor)
             
         return tensor.float(), label
 
-def load_dataset(batch_size: int = 16, mode: str = "png", load_augmented: bool = False, cache_in_ram: bool = False):
+def load_dataset(base_data_path: str | Path, batch_size: int = 16, mode: str = "png", cache_in_ram: bool = False):
     """Loads dataset and returns DataLoader objects with list of found classes"""
     try:
-        paths = get_dataset_paths()
+        base_path = Path(base_data_path)
         
-        if mode == "png":
-            train_key = "train_augmented_png" if load_augmented else "train_png"
-            val_key = "val_png"
-            test_key = "test_png"
-        else:
-            train_key = "train_augmented_npy" if load_augmented else "train_npy"
-            val_key = "val_npy"
-            test_key = "test_npy"
+        train_path = base_path / "train" / mode
+        val_path = base_path / "val" / mode
+        test_path = base_path / "test" / mode
 
-        train_dataset = KneeDataset(paths[train_key], is_train=True, cache_in_ram=cache_in_ram)
-        val_dataset = KneeDataset(paths[val_key], is_train=False, cache_in_ram=cache_in_ram)
-        test_dataset = KneeDataset(paths[test_key], is_train=False, cache_in_ram=False)
+        train_ds = KneeDataset(train_path, mode=mode, is_train=True, cache_in_ram=cache_in_ram)
+        val_ds = KneeDataset(val_path, mode=mode, is_train=False, cache_in_ram=cache_in_ram)
+        test_ds = KneeDataset(test_path, mode=mode, is_train=False, cache_in_ram=False)
+
+        if len(train_ds) == 0:
+            raise ValueError(f"The training set is empty at {base_path}/train/{mode}. Check split_data!")
         
-        train_workers = 0 if cache_in_ram else 8
+        # WeightedRandomSampler balancing
+        target_list = torch.tensor([s[1] for s in train_ds.samples], dtype=torch.long)
+        class_count = torch.bincount(target_list)
         
-        target_list = torch.tensor([sample[1] for sample in train_dataset.samples])
-        class_count = [torch.sum(target_list == i).item() for i in range(len(train_dataset.classes))]
-        class_weights = 1. / torch.tensor(class_count, dtype=torch.float)
+        class_weights = 1. / (class_count.float() + 1e-6)
         sample_weights = class_weights[target_list]
         
         sampler = WeightedRandomSampler(weights=sample_weights.tolist(), num_samples=len(sample_weights), replacement=True)
-        
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler, num_workers=train_workers, pin_memory=True, drop_last=(mode == 'npy'), persistent_workers=(train_workers > 0))
-        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=train_workers, pin_memory=True)
-        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=True)
 
-        logger.info(f"Loaded dataset in {mode} mode. Classes: {train_dataset.classes}")
-        return train_loader, val_loader, test_loader, train_dataset.classes
+        train_loader = DataLoader(train_ds, batch_size=batch_size, sampler=sampler, num_workers=0 if cache_in_ram else 4, pin_memory=True)
+        val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=0 if cache_in_ram else 4, pin_memory=True)
+        test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=0)
+
+        return train_loader, val_loader, test_loader, train_ds.classes
 
     except Exception as e:
         logger.error(f"Error during dataset loading: {e}")

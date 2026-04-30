@@ -1,5 +1,6 @@
 # Custom ignores
 data
+graphs
 logs
 *.png
 *.npy
