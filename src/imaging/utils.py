@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 import numpy as np
 import matplotlib.pyplot as plt
 import os
@@ -11,77 +13,73 @@ logger = CustomLogger("Imaging_utils_log")
 def split_data(npy_root: str | Path, png_root: str | Path, output_base: str | Path,
                train_ratio: float = 0.6, val_ratio: float = 0.25):
     """
-    Splits data into Train, Validation and Test sets on patient level.
-    Copies .npy and .png data to ensure consistency.
-    The remaining ratio (1 - train_ratio - val_ratio) goes to Test.
+    Splits data into Train, Val, and Test at the patient ID level.
+    Ensures that the L and R knees of the same patient fall into the same sample.
     """
-    logger.info("Start data splitting process")
+    logger.info("Starting the process of separating data by patient identifiers")
     
-    npy_root = Path(npy_root)
-    png_root = Path(png_root)
-    output_base = Path(output_base)
+    npy_root, png_root, output_base = Path(npy_root), Path(png_root), Path(output_base)
+    datasets = ["conditions_dataset", "knee_dataset"]
     
-    if not npy_root.exists():
-        raise FileNotFoundError(f"NPY root not found: {npy_root}")
-    if not png_root.exists():
-        logger.warning(f"PNG root not found at {png_root}. Only .npy files will be processed.")
-    
-    test_ratio = 1.0 - train_ratio - val_ratio
-    if test_ratio < -1e-5:
-        raise ValueError("The sum of train + val cannot exceed 1.0")
-    
-    output_base.mkdir(parents=True, exist_ok=True)
-    
-    splits = ["train", "val", "test"]
-    types = ["npy", "png"]
-    
-    conditions = [d.name for d in npy_root.iterdir() if d.is_dir()]
-    
-    for condition in conditions:
-        logger.info(f"Splitting for condition: {condition}")
-        
-        patient_folders = sorted([d for d in (npy_root / condition).iterdir() if d.is_dir()])
-        if not patient_folders:
-            logger.warning(f"Empty condition folder: {condition}")
+    for ds_tag in datasets:
+        ds_npy_path = npy_root / ds_tag
+        if not ds_npy_path.exists():
             continue
-
-        random.shuffle(patient_folders)
-        
-        n_patients = len(patient_folders)
-        idx_train = int(n_patients * train_ratio)
-        idx_val = int(n_patients * (train_ratio + val_ratio))
-        
-        patient_subsets = {
-            "train": patient_folders[:idx_train],
-            "val": patient_folders[idx_train:idx_val],
-            "test": patient_folders[idx_val:]
-        }
-        
-        for split in splits:
-            subset = patient_subsets[split]
             
-            for t in types:
-                (output_base / split / t / condition).mkdir(parents=True, exist_ok=True)
+        for condition_path in [d for d in ds_npy_path.iterdir() if d.is_dir()]:
+            condition = condition_path.name
+            logger.info(f"Processing category: {ds_tag}/{condition}")
             
-            for patient_path in subset:
-                patient_name = patient_path.name
+            # Group patients folders by id
+            patient_groups = defaultdict(list)
+            for p_folder in condition_path.iterdir():
+                if p_folder.is_dir():
+                    # get "patient#1" with "patient#1_L" or "patient#1_R"
+                    base_id = p_folder.name.split('_')[0]
+                    patient_groups[base_id].append(p_folder)
+            
+            # id shuffle
+            unique_ids = list(patient_groups.keys())
+            random.seed(42)
+            random.shuffle(unique_ids)
+            
+            n_ids = len(unique_ids)
+            idx_train = int(n_ids * train_ratio)
+            idx_val = int(n_ids * (train_ratio + val_ratio))
+            
+            split_assignments = {
+                "train": unique_ids[:idx_train],
+                "val": unique_ids[idx_train:idx_val],
+                "test": unique_ids[idx_val:]
+            }
+            
+            # data split
+            for split_name, ids in split_assignments.items():
+                (output_base / split_name / "npy" / condition).mkdir(parents=True, exist_ok=True)
+                (output_base / split_name / "png" / condition).mkdir(parents=True, exist_ok=True)
                 
-                dest_npy = output_base / split / "npy" / condition / patient_name
-                dest_png = output_base / split / "png" / condition / patient_name
-                
-                try:
-                    shutil.copytree(patient_path, dest_npy, dirs_exist_ok=True)
-                    
-                    src_png = png_root / condition / patient_name
-                    if src_png.exists():
-                        shutil.copytree(src_png, dest_png, dirs_exist_ok=True)
-                except Exception as e:
-                    logger.error(f"Failed to copy data for {patient_name}: {e}")
-        
-        logger.info(f"Condition {condition}: Train={len(patient_subsets['train'])}, "
-                    f"Val={len(patient_subsets['val'])}, Test={len(patient_subsets['test'])} patients.")
+                for p_id in ids:
+                    for src_patient_npy in patient_groups[p_id]:
+                        patient_folder_name = src_patient_npy.name # patient#1_L
+                        
+                        dest_npy = output_base / split_name / "npy" / condition / patient_folder_name
+                        dest_png = output_base / split_name / "png" / condition / patient_folder_name
+                        
+                        try:
+                            shutil.copytree(src_patient_npy, dest_npy, dirs_exist_ok=True)
+                            
+                            src_png = png_root / ds_tag / condition / patient_folder_name
+                            if src_png.exists():
+                                shutil.copytree(src_png, dest_png, dirs_exist_ok=True)
+                            
+                        except Exception as e:
+                            logger.error(f"Copy error {patient_folder_name}: {e}")
 
-    logger.info(f"Split complete. Data located at: {output_base}")
+            logger.info(f"Category {condition}: Patients={n_ids}, "
+                        f"Distribution: Train={len(split_assignments['train'])}, "
+                        f"Val={len(split_assignments['val'])}, Test={len(split_assignments['test'])}")
+
+    logger.info(f"Separation complete. Data located by path: {output_base}")
 
 
 # TODO: Rewrite to work with transformed images

@@ -13,7 +13,7 @@ def print_menu():
     print("KNEE PATHOLOGY PIPELINE")
     print("="*30)
     print("1 -- Convert DICOM files from datasets")
-    print("2 -- Verify DICOM to NumPy file conversion")
+    # print("2 -- Verify DICOM to NumPy file conversion")
     print("3 -- Examine NumPy files")
     print("4 -- Split train data")
     print("5 -- Augment NumPy dataset")
@@ -73,8 +73,8 @@ if __name__ == "__main__":
                     target_shape=target_shape, 
                     target_spacing=target_spacing
                 )
-            elif choice_input == 2:
-                verify_npy_conversion(processor=processor, dicom_path=test_dicom_image, npy_path=test_numpy_image)
+            # elif choice_input == 2:
+            #     verify_npy_conversion(processor=processor, dicom_path=test_dicom_image, npy_path=test_numpy_image)
             elif choice_input == 3:
                 numpy_examiner(converted_npy_folder, print_paths=False)
             elif choice_input == 4:

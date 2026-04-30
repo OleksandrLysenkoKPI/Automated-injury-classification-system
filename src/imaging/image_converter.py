@@ -192,26 +192,27 @@ class DICOMProcessor:
         return current_idx
                     
     @staticmethod
-    def process_single_patient(patient_path: Path, dataset_name, condition_name, idx, output_base_png, output_base_npy, target_shape, target_spacing):
-        processor = DICOMProcessor()
+    def extract_identity(folder_name: str):
+        parts = folder_name.upper().split('I')
+        raw_name = parts[0].strip()
         
         side = ""
-        folder_name = patient_path.name.upper()
-        if folder_name.endswith('L'):
+        if folder_name.upper().endswith('L'):
             side = "_L"
-        elif folder_name.endswith('R'):
+        elif folder_name.upper().endswith('R'):
             side = "_R"
             
-        patient_label = f"patient#{idx}{side}"
+        return raw_name, side
+    
+    @staticmethod
+    def process_single_patient(patient_path, dataset_name, condition_name, patient_label, output_base_png, output_base_npy, target_shape, target_spacing):
+        processor = DICOMProcessor()
+        sub_path = os.path.join(dataset_name, condition_name or "", patient_label)
         
-        safe_condition = condition_name if condition_name else ""
-        sub_path = os.path.join(dataset_name, safe_condition, patient_label)
-        
-        target_png = os.path.join(output_base_png, sub_path)
-        target_npy = os.path.join(output_base_npy, sub_path)
-        
-        os.makedirs(target_png, exist_ok=True)
-        os.makedirs(target_npy, exist_ok=True)
+        target_png = Path(output_base_png) / sub_path
+        target_npy = Path(output_base_npy) / sub_path
+        target_png.mkdir(parents=True, exist_ok=True)
+        target_npy.mkdir(parents=True, exist_ok=True)
         
         file_counter = 1
         for current_root, _, files in os.walk(patient_path):
@@ -230,48 +231,55 @@ class DICOMProcessor:
     def process_all_conditions(self, conditions_root_dir, knee_root_dir, output_base_png, output_base_npy, target_shape=(64, 160, 160), target_spacing=(1.0, 1.0, 1.0)):
         """
         Iterates through all the branch of a specified path and converts files,
-        recreating this folder structure in output directories: `Condition/patient/data`
+        recreating folder structure without a timestamp in folder directories.
         """
+        patient_name_to_id = {}
+        next_id = 1
+        
+        all_folders_to_process = []
+        
+        def collect_folders(root, dataset_tag, condition=None):
+            nonlocal next_id
+            if not Path(root).exists(): return
+            
+            for p_path in sorted(Path(root).iterdir()):
+                if p_path.is_dir():
+                    name_key, side = self.extract_identity(p_path.name)
+                    
+                    if name_key not in patient_name_to_id:
+                        patient_name_to_id[name_key] = next_id
+                        next_id += 1
+                    
+                    assigned_id = patient_name_to_id[name_key]
+                    all_folders_to_process.append({
+                        "path": p_path,
+                        "dataset": dataset_tag,
+                        "condition": condition,
+                        "id": assigned_id,
+                        "side": side
+                    })
+
+        c_root = Path(conditions_root_dir)
+        if c_root.exists():
+            for cond_path in [d for d in c_root.iterdir() if d.is_dir()]:
+                collect_folders(cond_path, "conditions_dataset", cond_path.name)
+        
+        collect_folders(knee_root_dir, "knee_dataset", "healthy")
+
         with ProcessPoolExecutor() as executor:
             all_futures = []
+            for item in all_folders_to_process:
+                patient_label = f"patient#{item['id']}{item['side']}"
+                
+                all_futures.append(
+                    executor.submit(
+                        self.process_single_patient,
+                        item["path"], item["dataset"],
+                        item["condition"], patient_label,
+                        output_base_png, output_base_npy,
+                        target_shape, target_spacing
+                    )
+                )
             
-            conditions_root = Path(conditions_root_dir)
-            if conditions_root.exists():
-                logger.info(f"Processing conditions dataset: {conditions_root.name}")
-                condition_paths = {d for d in conditions_root.iterdir() if d.is_dir()}
-                
-                for condition_path in condition_paths:
-                    condition_name = condition_path.name
-                    logger.info(f"Processing condition: {condition_name}")
-                    patient_folders = sorted([d for d in condition_path.iterdir() if d.is_dir()])
-
-                    for idx, patient_path in enumerate(patient_folders, start=1):
-                        all_futures.append(
-                            executor.submit(
-                                DICOMProcessor.process_single_patient,
-                                patient_path, "conditions_dataset",
-                                condition_name, idx,
-                                output_base_png, output_base_npy,
-                                target_shape, target_spacing
-                            )
-                        )
-            
-            knee_root_dir = Path(knee_root_dir)    
-            if knee_root_dir.exists():
-                logger.info(f"Processing healthy knee dataset: {knee_root_dir.name}")
-                patient_folders = sorted([d for d in knee_root_dir.iterdir() if d.is_dir()])
-                
-                for idx, patient_path in enumerate(patient_folders, start=1):
-                        all_futures.append(
-                            executor.submit(
-                                DICOMProcessor.process_single_patient,
-                                patient_path, "knee_dataset",
-                                None, idx,
-                                output_base_png, output_base_npy,
-                                target_shape, target_spacing
-                            )
-                        )
-                
-                
             total_files = sum(f.result() for f in all_futures)
-            logger.info(f"All datasets processed. Total files saved: {total_files}.")
+            logger.info(f"Обробка завершена. Анонімізовано {next_id-1} пацієнтів. Файлів: {total_files}")
