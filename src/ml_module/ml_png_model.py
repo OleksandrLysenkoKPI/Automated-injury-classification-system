@@ -37,7 +37,7 @@ class KneeResNet(nn.Module):
             nn.Linear(num_ftrs, 256),
             nn.BatchNorm1d(256),
             nn.ReLU(),
-            nn.Dropout(p=0.3),
+            nn.Dropout(p=0.4),
             nn.Linear(256, num_classes)
         )
 
@@ -45,7 +45,7 @@ class KneeResNet(nn.Module):
         return self.model(x)
 
 class FocalLoss(nn.Module):
-    def __init__(self, weight=None, gamma=2.0, reduction='mean'):
+    def __init__(self, weight=None, gamma=1.0, reduction='mean'):
         super(FocalLoss, self).__init__()
         self.weight = weight
         self.gamma = gamma
@@ -61,17 +61,10 @@ class FocalLoss(nn.Module):
         return focal_loss.sum()
 
 class EarlyStopping:
-    def __init__(self, patience: int = 15, min_delta: float = 0.0, max_gap: float = 20.0, verbose=True):
-        """
-        Args:
-            patience (int): Number of epochs to wait after the last update. Defaults to 7.
-            min_delta (float): The smallest change required for it to be considered an improvement. Defaults to 0.0.
-            verbose (bool): Toggle for logging message. Defaults to True.
-        """
+    def __init__(self, patience: int = 12, min_delta: float = 0.005, max_gap: float = 20.0):
         self.patience = patience
         self.min_delta = min_delta
         self.max_gap = max_gap
-        self.verbose = verbose
         self.counter = 0
         self.best_loss = None
         self.early_stop = False
@@ -79,8 +72,7 @@ class EarlyStopping:
     def __call__(self, val_loss, train_acc, val_acc):
         gap = train_acc - val_acc
         if gap > self.max_gap:
-            if self.verbose:
-                logger.warning(f"!!! Training stopped: Acc gap is too large ({gap:.2f}% > {self.max_gap}%)")
+            logger.warning(f"!!! Training stopped: Acc gap is too large ({gap:.2f}% > {self.max_gap}%)")
             self.early_stop = True
             return
         
@@ -89,8 +81,7 @@ class EarlyStopping:
             self.best_loss = val_loss
         elif val_loss > self.best_loss - self.min_delta:
             self.counter += 1
-            if self.verbose:
-                logger.info(f"EarlyStopping counter: {self.counter} out of {self.patience}")
+            logger.info(f"EarlyStopping counter: {self.counter}/{self.patience}")
             if self.counter >= self.patience:
                 self.early_stop = True
         else:
@@ -99,11 +90,11 @@ class EarlyStopping:
 
 def unfreeze_layers(model: KneeResNet, stage: int):
     if stage == 1:
-        logger.info("Stage 2: Unfreezing Layer 4")
+        logger.info("++++ Stage 2: Unfreezing Layer 4 ++++")
         for param in model.model.layer4.parameters():
             param.requires_grad = True
     elif stage == 2:
-        logger.info("Stage 3: Unfreezing Layer 3")
+        logger.info("++++ Stage 3: Unfreezing Layer 3 ++++")
         for param in model.model.layer3.parameters():
             param.requires_grad = True
 
@@ -120,12 +111,11 @@ def train_model(
     scaler = GradScaler("cuda")
     best_val_acc = 0.0
     best_model_state = None
-    best_val_loss = float('inf')
-    early_stopping = EarlyStopping(patience=15, min_delta=0.01, max_gap=25.0,verbose=True)
+    early_stopping = EarlyStopping(patience=10, max_gap=15.0)
     
     current_stage = 0
     
-    logger.info(f"Start training Custom 2D KneeNet on {device}")
+    logger.info(f"Start training 2D KneeResNet on {device}")
     
     for epoch in range(epochs):
         
@@ -135,11 +125,8 @@ def train_model(
             early_stopping.counter = 0
             
             param_groups = [
-                {'params': [p for n, p in model.model.named_parameters() if 'layer' in n and p.requires_grad], 
-                 'lr': 5e-5, 'weight_decay': 0.005},
-                
-                {'params': model.model.conv1.parameters(), 'lr': 5e-5, 'weight_decay': 0.005},
-                
+                {'params': [p for n, p in model.model.named_parameters() if 'layer' in n and p.requires_grad], 'lr': 5e-5, 'weight_decay': 0.01},
+                {'params': model.model.conv1.parameters(), 'lr': 5e-5, 'weight_decay': 0.01},
                 {'params': model.model.fc.parameters(), 'lr': 2e-4, 'weight_decay': 0.1}
             ]
             optimizer = optim.AdamW(param_groups)
@@ -165,7 +152,7 @@ def train_model(
             scaler.update()
             
             train_loss += loss.item()
-            _, predicted = torch.max(outputs.data, 1)
+            _, predicted = torch.max(outputs, 1)
             train_total += labels.size(0)
             train_correct += (predicted == labels).sum().item()
         
@@ -179,7 +166,7 @@ def train_model(
                     loss = criterion(outputs, labels)
                     
                     val_loss += loss.item()
-                    _, predicted = torch.max(outputs.data, 1)
+                    _, predicted = torch.max(outputs, 1)
                     val_total += labels.size(0)
                     val_correct += (predicted == labels).sum().item()
         
@@ -207,7 +194,6 @@ def train_model(
             logger.info(f"New best model (Loss improved): Epoch {epoch+1} | Loss: {avg_val_loss:.4f}")
         
         early_stopping(avg_val_loss, train_acc, val_acc)
-        
         if early_stopping.early_stop:
             if current_stage < 2:
                 logger.info("Early stop prevented - switching to next stage instead.")
@@ -252,7 +238,7 @@ def evaluate_model(
         target_names=class_names,
         zero_division=0
     )
-    logger.info(f"{report}")
+    logger.info(f"\n{report}")
     
     accuracy: float = (np.array(all_predictions) == np.array(all_labels)).mean() * 100
     logger.info(f"Overall Test Accuracy: {accuracy:.2f}%")
@@ -260,39 +246,32 @@ def evaluate_model(
 
 
 def start_png_model_pipeline(
+    base_data_path = "data/prepared_data",
     epochs: int = 30, 
     batch_size: int = 8, 
     mode: str = 'png', 
     save_file_name: str = "knee_3d_pathology_model",
-    use_augmented: bool = True,
     cache_in_ram: bool = False
 ):
-    """Starts model training and evaluation pipeline. Saves model at the end.
-
-    Args:
-        epochs (int, optional): Defaults to 5.
-        batch_size (int, optional): Defaults to 8.
-        mode (str): Can be 'png' or 'npy'. Defaults to 'png'.
-        save_file_name (str, optional): Defaults to "knee_3d_pathology_model".
-    """
+    """Starts model training and evaluation pipeline. Saves model at the end."""
     cudnn.benchmark = True
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
     train_loader, val_loader, test_loader, classes = load_dataset(
+        base_data_path=base_data_path,
         batch_size=batch_size,
-        mode=mode, 
-        load_augmented=use_augmented, 
+        mode=mode,  
         cache_in_ram=cache_in_ram
     )
 
-    model = KneeResNet(num_classes=len(classes), freeze_backbone=True)
-    device = torch.device("cuda")
-    model.to(device)
+    model = KneeResNet(num_classes=len(classes), freeze_backbone=True).to(device)
     
-    trainable_params = [p for p in model.parameters() if p.requires_grad]
-
-    weights = torch.tensor([2.0, 2.5, 2.0, 2.5, 2.2, 1.8]).to(device)
-    criterion = FocalLoss(weight=weights, gamma=2.0)
-    optimizer = optim.SGD(trainable_params, lr=1e-3, momentum=0.9, weight_decay=0.2, nesterov=True)
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=epochs, eta_min=1e-6)
+    optimizer = optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.01)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+    
+    # [Healthy, Pathology]
+    weights = torch.tensor([1.0, 1.0]).to(device)
+    criterion = FocalLoss(weight=weights, gamma=1.0)
     
     try:
         model = train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, device, epochs=epochs)
