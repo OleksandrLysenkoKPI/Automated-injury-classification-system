@@ -94,8 +94,8 @@ if __name__ == "__main__":
                 )
             elif choice_input == 77:
                 start_png_model_pipeline(
-                    epochs=50, 
-                    batch_size=64, 
+                    epochs=40, 
+                    batch_size=32, 
                     mode="png", 
                     save_file_name="knee_2d_binary_model",
                     cache_in_ram=cache_in_ram
@@ -103,7 +103,7 @@ if __name__ == "__main__":
             elif choice_input == 9:
                 start_stage2_pipeline(
                     binary_model_path="knee_2d_binary_model.pth",
-                    epochs=50, 
+                    epochs=40, 
                     batch_size=64, 
                     save_file_name="knee_stage2_6classes",
                     cache_in_ram=cache_in_ram

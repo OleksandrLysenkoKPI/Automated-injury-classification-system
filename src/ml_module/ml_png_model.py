@@ -6,9 +6,6 @@ import numpy as np
 from torchvision import models
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
-from torch.nn.modules.loss import _Loss
-from torch.optim import Optimizer
-from torch.optim.lr_scheduler import LRScheduler
 from torch.amp.autocast_mode import autocast
 from torch.amp.grad_scaler import GradScaler
 import torch.backends.cudnn as cudnn
@@ -236,8 +233,8 @@ def evaluate_model(
 
 def start_png_model_pipeline(
     base_data_path = "data/prepared_data",
-    epochs: int = 30, 
-    batch_size: int = 8, 
+    epochs: int = 40, 
+    batch_size: int = 32, 
     mode: str = 'png', 
     save_file_name: str = "knee_2d_binary_model",
     cache_in_ram: bool = False
@@ -251,17 +248,21 @@ def start_png_model_pipeline(
     )
     model = KneeResNet(num_classes=2, dropout_p=0.4, freeze_backbone=True).to(device)
     
-    optimizer = optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.01)
+    optimizer = optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.02)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
     
     # [Healthy, Pathology]
-    weights = torch.tensor([1.0, 1.0]).to(device)
-    criterion = FocalLoss(weight=weights, gamma=1.0, label_smoothing=0.0)
+    weights = torch.tensor([0.8, 2.5]).to(device)
+    criterion = FocalLoss(weight=weights, gamma=2.0, label_smoothing=0.05)
     
-    config = {'stage_num': 1, 'patience': 10, 'max_gap': 15.0}
-    model = train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, device, epochs, config)
-    evaluate_model(model, test_loader, device, classes)
-    torch.save(model.state_dict(), f"{save_file_name}.pth")
+    config = {'stage_num': 1, 'patience': 10, 'max_gap': 25.0}
+    try:
+        model = train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, device, epochs, config)
+        evaluate_model(model, test_loader, device, classes)
+        torch.save(model.state_dict(), f"{save_file_name}.pth")
+        logger.info(f"Binary model saved.")
+    except Exception as e:
+        logger.error(f"Pipeline failed: {e}")
         
 def start_stage2_pipeline(
     base_data_path="data/prepared_data",
