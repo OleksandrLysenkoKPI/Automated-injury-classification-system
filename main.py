@@ -14,14 +14,14 @@ def print_menu():
     print("="*30)
     print("1 -- Convert DICOM files from datasets")
     # print("2 -- Verify DICOM to NumPy file conversion")
-    print("3 -- Examine NumPy files")
-    print("4 -- Split train data")
+    print("2 -- Examine NumPy files")
+    print("3 -- Split train data")
     # print("5 -- Augment NumPy dataset")
     # print("55 -- Augment PNG dataset")
-    print("6 -- Load dataset")
-    print("7 -- Start NPY model pipeline")
-    print("77 -- Start PNG model pipeline Stage 1")
-    print("9 -- Start PNG model pipeline Stage 2")
+    print("4 -- Load dataset")
+    print("5 -- Start NPY model pipeline")
+    print("6 -- Start PNG model pipeline Stage 1")
+    print("7 -- Start PNG model pipeline Stage 2")
     print("0 -- Exit")
     print("-"*30)
     print("Choice: ", end="")
@@ -71,19 +71,13 @@ if __name__ == "__main__":
                     target_shape=target_shape, 
                     target_spacing=target_spacing
                 )
-            # elif choice_input == 2:
-            #     verify_npy_conversion(processor=processor, dicom_path=test_dicom_image, npy_path=test_numpy_image)
-            elif choice_input == 3:
+            elif choice_input == 2:
                 numpy_examiner(converted_npy_folder, print_paths=False)
-            elif choice_input == 4:
+            elif choice_input == 3:
                 split_data(converted_npy_folder, converted_png_folder, prepared_data_folder)
-            # elif choice_input == 5:
-            #     augment_and_save_npy_dataset(npy_data_to_augment)
-            # elif choice_input == 55:
-            #     augment_and_save_png_dataset(png_data_to_augment)
-            elif choice_input == 6:
+            elif choice_input == 4:
                 load_dataset(base_data_path=prepared_data_folder, batch_size=64, mode="npy", cache_in_ram=True)
-            elif choice_input == 7:
+            elif choice_input == 5:
                 start_npy_model_pipeline(
                     epochs=50, 
                     batch_size=4, 
@@ -92,7 +86,7 @@ if __name__ == "__main__":
                     use_augmented=False, 
                     cache_in_ram=cache_in_ram
                 )
-            elif choice_input == 77:
+            elif choice_input == 6:
                 start_png_model_pipeline(
                     epochs=40, 
                     batch_size=32, 
@@ -100,7 +94,7 @@ if __name__ == "__main__":
                     save_file_name="knee_2d_binary_model",
                     cache_in_ram=cache_in_ram
                 )
-            elif choice_input == 9:
+            elif choice_input == 7:
                 start_stage2_pipeline(
                     binary_model_path="knee_2d_binary_model.pth",
                     epochs=40, 
