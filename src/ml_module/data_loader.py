@@ -19,9 +19,10 @@ def is_valid_slice(img_array: np.ndarray, std_threshold: float = 10.0):
     return np.std(img_array.astype(np.float32)) > std_threshold
 
 class KneeDataset(Dataset):
-    def __init__(self, root_dir: str | Path, mode: str = "png", is_train: bool = False, cache_in_ram: bool = False):
+    def __init__(self, root_dir: str | Path, mode: str = "png", stage: int = 1, is_train: bool = False, cache_in_ram: bool = False):
         self.root_dir = Path(root_dir)
         self.mode = mode.lower()
+        self.stage = stage
         self.is_train = is_train
         self.cache_in_ram = cache_in_ram
         
@@ -30,16 +31,33 @@ class KneeDataset(Dataset):
         self.labels = []
         
         # Binary classification mapping
-        self.group_map = {
-            'healthy': 0,
-            'гонартроз': 1, 
+        if self.stage == 1:
+            self.group_map = {
+                'healthy': 0,
+                'гонартроз': 1, 
+                'хондромаляція виростків': 1, 
+                'хондромаляція надколінка': 1,
+                'меніски': 1, 
+                'часткове пошкодження пхз': 1, 
+                'медіапателярна складка': 1
+            }
+            self.classes = ['Healthy', 'Pathology']
+        elif self.stage == 2:
+            self.group_map = {
+            'гонартроз': 0, 
             'хондромаляція виростків': 1, 
-            'хондромаляція надколінка': 1,
-            'меніски': 1, 
-            'часткове пошкодження пхз': 1, 
-            'медіапателярна складка': 1
-        }
-        self.classes = ['Healthy', 'Pathology']
+            'хондромаляція надколінка': 2,
+            'меніски': 3, 
+            'часткове пошкодження пхз': 4, 
+            'медіапателярна складка': 5
+            }
+            self.classes = [
+                'Гонартроз', 'Хондромаляція_виростків', 'Хондромаляція_надколінка',
+                'Меніски', 'Часткове_пошкодження_пхз', 'Медіапателярна_складка'
+                ]
+        else:
+            logger.error(f"Stage {self.stage} does not exist, there are only 2 stages!")
+            raise
         
         if self.is_train and self.mode == "png":
             self.train_transforms = v2.Compose([
@@ -147,7 +165,7 @@ class KneeDataset(Dataset):
             
         return tensor.float(), label
 
-def load_dataset(base_data_path: str | Path, batch_size: int = 16, mode: str = "png", cache_in_ram: bool = False):
+def load_dataset(base_data_path: str | Path, batch_size: int = 16, mode: str = "png", stage: int = 1, cache_in_ram: bool = False):
     """Loads dataset and returns DataLoader objects with list of found classes"""
     try:
         base_path = Path(base_data_path)
@@ -156,9 +174,9 @@ def load_dataset(base_data_path: str | Path, batch_size: int = 16, mode: str = "
         val_path = base_path / "val" / mode
         test_path = base_path / "test" / mode
 
-        train_ds = KneeDataset(train_path, mode=mode, is_train=True, cache_in_ram=cache_in_ram)
-        val_ds = KneeDataset(val_path, mode=mode, is_train=False, cache_in_ram=cache_in_ram)
-        test_ds = KneeDataset(test_path, mode=mode, is_train=False, cache_in_ram=False)
+        train_ds = KneeDataset(train_path, mode=mode, is_train=True, stage=stage, cache_in_ram=cache_in_ram)
+        val_ds = KneeDataset(val_path, mode=mode, is_train=False, stage=stage, cache_in_ram=cache_in_ram)
+        test_ds = KneeDataset(test_path, mode=mode, is_train=False, stage=stage, cache_in_ram=False)
 
         if len(train_ds) == 0:
             raise ValueError(f"The training set is empty at {base_path}/train/{mode}. Check split_data!")

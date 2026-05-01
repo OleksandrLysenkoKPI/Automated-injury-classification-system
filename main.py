@@ -4,7 +4,7 @@ from src.imaging.image_augmentation import augment_and_save_npy_dataset, augment
 from src.ml_module.ml_utils import numpy_examiner
 from src.ml_module.data_loader import load_dataset
 from src.ml_module.ml_npy_model import start_npy_model_pipeline
-from src.ml_module.ml_png_model import start_png_model_pipeline
+from src.ml_module.ml_png_model import start_png_model_pipeline, start_stage2_pipeline
 from dotenv import load_dotenv
 import os
 
@@ -20,11 +20,9 @@ def print_menu():
     # print("55 -- Augment PNG dataset")
     print("6 -- Load dataset")
     print("7 -- Start NPY model pipeline")
-    print("77 -- Start PNG model pipeline")
+    print("77 -- Start PNG model pipeline Stage 1")
+    print("9 -- Start PNG model pipeline Stage 2")
     print("0 -- Exit")
-    print("+"*30)
-    print("9 -- 3 in 1: Convert, Split, Augment")
-    print("10 -- 2 in 1: Split, Augment")
     print("-"*30)
     print("Choice: ", end="")
 
@@ -99,23 +97,17 @@ if __name__ == "__main__":
                     epochs=50, 
                     batch_size=64, 
                     mode="png", 
-                    save_file_name="knee_2d_pathology_model", 
+                    save_file_name="knee_2d_binary_model",
                     cache_in_ram=cache_in_ram
                 )
             elif choice_input == 9:
-                processor.process_all_conditions(
-                    conditions_root_dir=conditions_dataset_folder, 
-                    knee_root_dir=knee_dataset_folder, 
-                    output_base_png=converted_png_folder, 
-                    output_base_npy=converted_npy_folder, 
-                    target_shape=target_shape, 
-                    target_spacing=target_spacing
+                start_stage2_pipeline(
+                    binary_model_path="knee_2d_binary_model.pth",
+                    epochs=50, 
+                    batch_size=64, 
+                    save_file_name="knee_stage2_6classes",
+                    cache_in_ram=cache_in_ram
                 )
-                split_data(converted_npy_folder, converted_png_folder, prepared_data_folder)
-                # augment_and_save_npy_dataset(npy_data_to_augment)
-            elif choice_input == 10:
-                split_data(converted_npy_folder, converted_png_folder, prepared_data_folder)
-                # augment_and_save_npy_dataset(npy_data_to_augment)
             elif choice_input == 0:
                 print("Exiting program...")
                 break
