@@ -4,7 +4,8 @@ from src.imaging.image_augmentation import augment_and_save_npy_dataset, augment
 from src.ml_module.ml_utils import numpy_examiner
 from src.ml_module.data_loader import load_dataset
 from src.ml_module.ml_npy_model import start_npy_model_pipeline
-from src.ml_module.ml_png_model import start_png_model_pipeline, start_stage2_pipeline
+from src.ml_module.ml_png_model import start_png_model_pipeline, start_stage2_png_pipeline
+from src.ml_module.ml_npy_model import start_npy_model_pipeline, start_stage2_npy_pipeline
 from dotenv import load_dotenv
 import os
 
@@ -13,15 +14,13 @@ def print_menu():
     print("KNEE PATHOLOGY PIPELINE")
     print("="*30)
     print("1 -- Convert DICOM files from datasets")
-    # print("2 -- Verify DICOM to NumPy file conversion")
     print("2 -- Examine NumPy files")
     print("3 -- Split train data")
-    # print("5 -- Augment NumPy dataset")
-    # print("55 -- Augment PNG dataset")
     print("4 -- Load dataset")
-    print("5 -- Start NPY model pipeline")
-    print("6 -- Start PNG model pipeline Stage 1")
-    print("7 -- Start PNG model pipeline Stage 2")
+    print("5 -- Start NPY model pipeline Stage 1")
+    print("6 -- Start NPY model pipeline Stage 2")
+    print("7 -- Start PNG model pipeline Stage 1")
+    print("8 -- Start PNG model pipeline Stage 2")
     print("0 -- Exit")
     print("-"*30)
     print("Choice: ", end="")
@@ -79,14 +78,22 @@ if __name__ == "__main__":
                 load_dataset(base_data_path=prepared_data_folder, batch_size=64, mode="npy", cache_in_ram=True)
             elif choice_input == 5:
                 start_npy_model_pipeline(
-                    epochs=50, 
+                    epochs=40, 
                     batch_size=4, 
                     mode="npy", 
-                    save_file_name="knee_3d_pathology_model", 
-                    use_augmented=False, 
+                    save_file_name="knee_3d_binary_model", 
                     cache_in_ram=cache_in_ram
                 )
             elif choice_input == 6:
+                start_stage2_npy_pipeline(
+                    binary_model_path="knee_3d_binary_model.pth",
+                    epochs=60,
+                    batch_size=4,
+                    save_file_name="knee_3d_stage2_6classes",
+                    cache_in_ram=True
+                )
+            
+            elif choice_input == 7:
                 start_png_model_pipeline(
                     epochs=40, 
                     batch_size=32, 
@@ -94,8 +101,8 @@ if __name__ == "__main__":
                     save_file_name="knee_2d_binary_model",
                     cache_in_ram=cache_in_ram
                 )
-            elif choice_input == 7:
-                start_stage2_pipeline(
+            elif choice_input == 8:
+                start_stage2_png_pipeline(
                     binary_model_path="knee_2d_binary_model.pth",
                     epochs=40, 
                     batch_size=64, 

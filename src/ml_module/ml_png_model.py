@@ -264,7 +264,7 @@ def start_png_model_pipeline(
     except Exception as e:
         logger.error(f"Pipeline failed: {e}")
         
-def start_stage2_pipeline(
+def start_stage2_png_pipeline(
     base_data_path="data/prepared_data",
     binary_model_path="knee_2d_binary_model.pth",
     epochs=50, 
