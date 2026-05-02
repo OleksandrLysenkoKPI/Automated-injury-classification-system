@@ -190,8 +190,8 @@ def load_dataset(base_data_path: str | Path, batch_size: int = 16, mode: str = "
         
         sampler = WeightedRandomSampler(weights=sample_weights.tolist(), num_samples=len(sample_weights), replacement=True)
 
-        train_loader = DataLoader(train_ds, batch_size=batch_size, sampler=sampler, num_workers=0 if cache_in_ram else 4, pin_memory=True)
-        val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=0 if cache_in_ram else 4, pin_memory=True)
+        train_loader = DataLoader(train_ds, batch_size=batch_size, sampler=sampler, num_workers=0 if cache_in_ram else 4, pin_memory=True, drop_last=True)
+        val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=0 if cache_in_ram else 4, pin_memory=True, drop_last=False)
         test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=0)
 
         return train_loader, val_loader, test_loader, train_ds.classes
