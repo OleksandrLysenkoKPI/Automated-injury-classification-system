@@ -115,7 +115,7 @@ class DICOMProcessor:
         
         return normalized.astype(np.float16)
     
-    def get_processed_volume(self, target_range=(0, 1), target_spacing=(1.0, 1.0, 1.0), target_shape=(64, 160, 160)):
+    def get_processed_volume(self, target_range=(0, 1), target_spacing=(1.0, 1.0, 1.0), target_shape=(32, 128, 128)):
         """Applies the full preprocessing pipeline to the current DICOM object."""
         try:
             data = self.pixels_hu.astype(np.float32)
@@ -156,7 +156,7 @@ class DICOMProcessor:
         return False
     
     def batch_conversion(self, input_dir, output_png_dir=None, output_npy_dir=None, 
-                         start_idx: int = 1, target_shape: tuple[int, int, int] = (64, 160, 160), target_spacing: tuple[float, float, float]=(1.0, 1.0, 1.0)):
+                         start_idx: int = 1, target_shape: tuple[int, int, int] = (32, 128, 128), target_spacing: tuple[float, float, float]=(1.0, 1.0, 1.0)):
         """
         Iterates through a folder and converts all DICOM files to png and npy.
         """
@@ -228,7 +228,7 @@ class DICOMProcessor:
                 )
         return file_counter - 1
     
-    def process_all_conditions(self, conditions_root_dir, knee_root_dir, output_base_png, output_base_npy, target_shape=(64, 160, 160), target_spacing=(1.0, 1.0, 1.0)):
+    def process_all_conditions(self, conditions_root_dir, knee_root_dir, output_base_png, output_base_npy, target_shape=(32, 128, 128), target_spacing=(1.0, 1.0, 1.0)):
         """
         Iterates through all the branch of a specified path and converts files,
         recreating folder structure without a timestamp in folder directories.
