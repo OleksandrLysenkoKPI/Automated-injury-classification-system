@@ -82,7 +82,7 @@ def split_data(npy_root: str | Path, png_root: str | Path, output_base: str | Pa
     logger.info(f"Separation complete. Data located by path: {output_base}")
 
 
-# TODO: Rewrite to work with transformed images
+# TODO: Legacy code
 def verify_npy_conversion(processor, dicom_path, npy_path):
     """Compares original DICOM with loaded NumPy file"""
     try:

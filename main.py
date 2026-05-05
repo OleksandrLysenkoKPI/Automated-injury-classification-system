@@ -86,7 +86,7 @@ if __name__ == "__main__":
                 )
             elif choice_input == 6:
                 start_stage2_npy_pipeline(
-                    binary_model_path="knee_3d_binary_model.pth",
+                    binary_model_path="models/knee_3d_binary_model.pth",
                     epochs=60,
                     batch_size=4,
                     save_file_name="knee_3d_stage2_6classes",

@@ -2,6 +2,7 @@
 data
 graphs
 logs
+models
 *.png
 *.npy
 *.pth
