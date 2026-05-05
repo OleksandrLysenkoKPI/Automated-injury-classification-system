@@ -12,6 +12,11 @@ from .diagnostics_tab import DiagnosticsTab
 from .admin_tab import AdminTab
 from .threads.analysis_thread import AnalysisThread
 from .inference_engine import KneeInferenceEngine
+
+from ..imaging.image_converter import DICOMProcessor
+from ..imaging.utils import split_data
+from ..imaging.image_augmentation import augment_and_save_npy_dataset, augment_and_save_png_dataset
+from ..ml_module.ml_npy_model import start_npy_model_pipeline, start_stage2_npy_pipeline
 from ..logger_module.logger import CustomLogger
 
 logger = CustomLogger("Main_Window")
@@ -22,25 +27,130 @@ class MedicalApp(QWidget):
         self.setWindowTitle("Knee Pathology Diagnostic System")
         self.resize(1100, 750)
         
-        self.engine = KneeInferenceEngine("knee_3d_binary_model.pth", "knee_3d_stage2_6classes.pth") 
+        self.engine = KneeInferenceEngine("models/knee_3d_binary_model.pth", "models/knee_3d_stage2_6classes.pth") 
         self.current_volume = None 
         self.input_tensor = None
         
         self.setup_ui()
+        self.connect_admin_signals()
 
     def setup_ui(self):
         self.tabs = QTabWidget()
         
         self.diag_tab = DiagnosticsTab(self)
-        self.admin_tab = AdminTab(self) # Future Admin Tab
+        self.admin_tab = AdminTab(self)
         
         self.tabs.addTab(self.diag_tab, "Діагностика (Main)")
         self.tabs.addTab(self.admin_tab, "Панель керування")
         
         main_layout = QVBoxLayout(self)
         main_layout.addWidget(self.tabs)
+        
+    def connect_admin_signals(self):
+        """Binds buttons from AdminTab to MedicalApp methods."""
+        # Data preparation buttons
+        self.admin_tab.btn_process_all.clicked.connect(self.handle_process_all_dicoms)
+        self.admin_tab.btn_aug_npy.clicked.connect(self.handle_augmentation_npy)
+        self.admin_tab.btn_split.clicked.connect(self.handle_data_split)
+        
+        # Model trainning buttons
+        self.admin_tab.btn_npy_full.clicked.connect(lambda: self.run_training("npy_full"))
+        self.admin_tab.btn_npy_s2.clicked.connect(lambda: self.run_training("npy_s2"))
+        
+        # Clear logs button
+        self.admin_tab.btn_clear_logs.clicked.connect(lambda: self.admin_tab.log_output.clear())
 
-    # WORK LOGIC
+    # ADMIN TOOLS TAB HANDLERS
+    def handle_process_all_dicoms(self):
+        """Launches a full conversion of DICOM datasets."""
+        source_root = self.admin_tab.raw_data_edit.text()
+    
+        if not source_root or not Path(source_root).exists():
+            QMessageBox.warning(self, "Помилка", "Оберіть коректний шлях до сирих DICOM даних!")
+            return
+
+        output_dir = QFileDialog.getExistingDirectory(self, "Оберіть папку для виводу результатів")
+        if not output_dir:
+            return
+        
+        logger.info(f"Start DICOM processing from: {source_root}")
+        try:
+            processor = DICOMProcessor()
+            processor.process_all_conditions(
+                conditions_root_dir=str(Path(source_root) / "conditions"),
+                knee_root_dir=str(Path(source_root) / "healthy"),
+                output_base_png=str(Path(output_dir) / "png_converted"),
+                output_base_npy=str(Path(output_dir) / "npy_converted")
+            )
+            QMessageBox.information(self, "Успіх", "Конвертація завершена!")
+        except Exception as e:
+            logger.error(f"Conversion Error: {e}")
+
+    def handle_augmentation_npy(self):
+        """Launches NPY data augmentation."""
+        
+        path = self.admin_tab.dataset_path_edit.text()
+    
+        if not path or not Path(path).exists():
+            QMessageBox.warning(self, "Помилка шляху", "Будь ласка, оберіть коректну папку датасету в Admin Tab!")
+            return
+        
+        logger.info(f"Launching NPY dataset augmentation for {path}")
+        logger.info(f"Запуск аугментації NPY для: {path}")
+        try:
+            augment_and_save_npy_dataset(path) 
+            QMessageBox.information(self, "Успіх", "Аугментація NPY завершена!")
+        except Exception as e:
+            logger.error(f"Augmentation Error: {e}")
+
+    def handle_data_split(self):
+        """Starts data splitting into Train/Val/Test."""
+        base_path = self.admin_tab.dataset_path_edit.text()
+    
+        if not base_path or not Path(base_path).exists():
+            QMessageBox.warning(self, "Помилка", "Вкажіть шлях до папки з конвертованими даними!")
+            return
+        
+        output_base = QFileDialog.getExistingDirectory(self, "Оберіть папку для Final Split")
+        if not output_base:
+            return
+
+        logger.info(f"Data split from {base_path} into {output_base}")
+        try:
+            split_data(
+                npy_root=str(Path(base_path) / "npy_converted"),
+                png_root=str(Path(base_path) / "png_converted"),
+                output_base=output_base
+            )
+            QMessageBox.information(self, "Успіх", "Дані успішно розділені!")
+        except Exception as e:
+            logger.error(f"Split Error: {e}")
+
+    def run_training(self, task_type):
+        """Launches model training pipeline."""
+        base_path = self.admin_tab.dataset_path_edit.text()
+    
+        if not base_path or not Path(base_path).exists():
+            QMessageBox.warning(self, "Помилка", "Вкажіть шлях до датасету перед навчанням!")
+            return
+
+        self.admin_tab.train_progress.setValue(10)
+        
+        try:
+            if task_type == "npy_full":
+                logger.info(f"Навчання на датасеті: {base_path}")
+                # Передаємо base_data_path у пайплайн[cite: 15]
+                start_npy_model_pipeline(base_data_path=base_path, epochs=30)
+            elif task_type == "npy_s2":
+                start_stage2_npy_pipeline(base_data_path=base_path, epochs=30)
+                
+            self.admin_tab.train_progress.setValue(100)
+            QMessageBox.information(self, "Успіх", f"Навчання {task_type} завершено!")
+        except Exception as e:
+            logger.error(f"Training failed: {e}")
+            self.admin_tab.train_progress.setValue(0)
+    
+    # DIAGNOSTIC TAB LOGIC
     def load_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Оберіть файл МРТ", "", "DICOM / Numpy (*.dcm *.npy);;All Files (*)"
