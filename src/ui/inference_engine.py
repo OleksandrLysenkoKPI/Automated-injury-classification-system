@@ -17,8 +17,8 @@ class KneeInferenceEngine:
         try:
             self.device = torch.device(device if torch.cuda.is_available() else "cpu")
             self.classes_s2 = [
-                'Гонартроз', 'Хондромаляція_виростків', 'Хондромаляція_надколінка',
-                'Меніски', 'Часткове_пошкодження_пхз', 'Медіапателярна_складка'
+                'Гонартроз', 'Хондромаляція виростків', 'Хондромаляція надколінка',
+                'Меніски', 'Часткове пошкодження пхз', 'Медіапателярна складка'
             ]
             
             self.model_s1 = KneeResidualAttentionNet(num_classes=2).to(self.device)
