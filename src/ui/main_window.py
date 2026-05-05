@@ -1,6 +1,4 @@
 import sys
-import torch
-import numpy as np
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QTabWidget, QVBoxLayout,
@@ -9,7 +7,6 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 
 from .diagnostics_tab import DiagnosticsTab
-from .admin_tab import AdminTab
 from .threads.analysis_thread import AnalysisThread
 from .inference_engine import KneeInferenceEngine
 from ..logger_module.logger import CustomLogger
@@ -22,7 +19,7 @@ class MedicalApp(QWidget):
         self.setWindowTitle("Knee Pathology Diagnostic System")
         self.resize(1100, 750)
         
-        self.engine = KneeInferenceEngine("knee_3d_binary_model.pth", "knee_3d_stage2_6classes.pth") 
+        self.engine = KneeInferenceEngine("models/knee_3d_binary_model.pth", "models/knee_3d_stage2_6classes.pth") 
         self.current_volume = None 
         self.input_tensor = None
         
@@ -32,15 +29,13 @@ class MedicalApp(QWidget):
         self.tabs = QTabWidget()
         
         self.diag_tab = DiagnosticsTab(self)
-        self.admin_tab = AdminTab(self) # Future Admin Tab
         
         self.tabs.addTab(self.diag_tab, "Діагностика (Main)")
-        self.tabs.addTab(self.admin_tab, "Панель керування")
         
         main_layout = QVBoxLayout(self)
         main_layout.addWidget(self.tabs)
 
-    # WORK LOGIC
+    # DIAGNOSTIC LOGIC
     def load_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Оберіть файл МРТ", "", "DICOM / Numpy (*.dcm *.npy);;All Files (*)"

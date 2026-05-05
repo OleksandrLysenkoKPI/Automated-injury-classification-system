@@ -1,5 +1,4 @@
 from PyQt6.QtGui import QImage, QPixmap
-from PyQt6.QtCore import Qt
 import numpy as np
 
 def numpy_to_pixmap(slice_data: np.ndarray, width: int, height: int) -> QPixmap:
