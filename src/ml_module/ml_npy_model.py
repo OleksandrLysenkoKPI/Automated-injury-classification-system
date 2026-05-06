@@ -246,7 +246,7 @@ def start_npy_model_pipeline(
     try:
         model = train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, device, epochs, config)
         evaluate_model(model, test_loader, device, classes)
-        torch.save(model.state_dict(), f"{save_file_name}.pth")
+        torch.save(model.state_dict(), f"models/{save_file_name}.pth")
         logger.info(f"3D Binary model saved.")
     except Exception as e:
         logger.error(f"3D Pipeline failed: {e}")
@@ -294,7 +294,7 @@ def start_stage2_npy_pipeline(
     try:
         model = train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, device, epochs, config)
         evaluate_model(model, test_loader, device, classes)
-        torch.save(model.state_dict(), f"{save_file_name}.pth")
+        torch.save(model.state_dict(), f"models/{save_file_name}.pth")
         logger.info(f"3D Stage 2 complete.")
     except Exception as e:
         logger.error(f"3D Stage 2 failed: {e}")

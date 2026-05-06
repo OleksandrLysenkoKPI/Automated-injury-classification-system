@@ -259,7 +259,7 @@ def start_png_model_pipeline(
     try:
         model = train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, device, epochs, config)
         evaluate_model(model, test_loader, device, classes)
-        torch.save(model.state_dict(), f"{save_file_name}.pth")
+        torch.save(model.state_dict(), f"models/{save_file_name}.pth")
         logger.info(f"Binary model saved.")
     except Exception as e:
         logger.error(f"Pipeline failed: {e}")
@@ -314,7 +314,7 @@ def start_stage2_png_pipeline(
     try:
         model = train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, device, epochs, config)
         evaluate_model(model, test_loader, device, classes)
-        torch.save(model.state_dict(), f"{save_file_name}.pth")
+        torch.save(model.state_dict(), f"models/{save_file_name}.pth")
         logger.info(f"Stage 2 complete.")
     except Exception as e:
         logger.error(f"Stage 2 failed: {e}")
