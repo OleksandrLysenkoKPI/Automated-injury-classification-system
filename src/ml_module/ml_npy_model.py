@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import cast
 import torch
 import torch.nn as nn
@@ -219,7 +220,7 @@ def evaluate_model(
 
 
 def start_npy_model_pipeline(
-    base_data_path="data/prepared_data",
+    base_data_path: str | Path ="data/prepared_data",
     epochs: int = 40, 
     batch_size: int = 4,
     mode: str = 'npy', 
@@ -252,12 +253,12 @@ def start_npy_model_pipeline(
         logger.error(f"3D Pipeline failed: {e}")
 
 def start_stage2_npy_pipeline(
-    base_data_path="data/prepared_data",
-    binary_model_path="models/knee_3d_binary_model.pth",
-    epochs=60, 
-    batch_size=4, 
-    save_file_name="knee_3d_stage2_6classes",
-    cache_in_ram=False
+    base_data_path: str | Path = "data/prepared_data",
+    binary_model_path: str | Path = "models/knee_3d_binary_model.pth",
+    epochs: int = 60, 
+    batch_size: int = 4, 
+    save_file_name: str = "knee_3d_stage2_6classes",
+    cache_in_ram: bool = False
 ):
     cudnn.benchmark = True
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

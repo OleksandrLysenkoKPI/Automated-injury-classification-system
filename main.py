@@ -40,22 +40,22 @@ def print_menu():
     print("-"*30)
     print("Choice: ", end="")
 
+def get_env_strict(key: str) -> str:
+    value = os.getenv(key)
+    if value is None:
+        raise ValueError(f"Missing environment variable: {key}")
+    return value
+
 def run_cli():
     """Starts the Text-Based Menu Interface"""
     load_dotenv()
     
-    conditions_dataset_folder = os.getenv('KNEE_CONDITIONS_DATASET')
-    knee_dataset_folder = os.getenv('KNEE_DATASET')
+    conditions_dataset_folder = get_env_strict('KNEE_CONDITIONS_DATASET')
+    knee_dataset_folder = get_env_strict('KNEE_DATASET')
     
-    converted_npy_folder = "data/converted_data/converted_NumPy"
-    converted_png_folder = "data/converted_data/converted_PNG"
-    prepared_data_folder = "data/prepared_data"
-    
-    npy_data_to_train = "data/prepared_data/train/npy"
-    png_data_to_train = "data/prepared_data/train/png"
-    
-    test_dicom_image = os.getenv('TEST_DICOM_IMAGE')
-    test_numpy_image = os.getenv('TEST_NUMPY_IMAGE')
+    converted_npy_folder = get_env_strict('CONVERTED_NPY')
+    converted_png_folder = get_env_strict('CONVERTED_PNG')
+    prepared_data_folder = get_env_strict('PREPARED_KNEE_DATASET')
     
     processor = DICOMProcessor()
     

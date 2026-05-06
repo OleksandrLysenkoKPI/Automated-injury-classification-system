@@ -228,7 +228,11 @@ class DICOMProcessor:
                 )
         return file_counter - 1
     
-    def process_all_conditions(self, conditions_root_dir, knee_root_dir, output_base_png, output_base_npy, target_shape=(32, 128, 128), target_spacing=(1.0, 1.0, 1.0)):
+    def process_all_conditions(
+        self, conditions_root_dir: str | Path, knee_root_dir: str | Path, output_base_png: str | Path, 
+        output_base_npy: str | Path, target_shape: tuple[int, int, int] = (32, 128, 128), 
+        target_spacing: tuple[float, float, float] = (1.0, 1.0, 1.0)
+    ):
         """
         Iterates through all the branch of a specified path and converts files,
         recreating folder structure without a timestamp in folder directories.
