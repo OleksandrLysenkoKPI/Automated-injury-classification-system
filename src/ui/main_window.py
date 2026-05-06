@@ -110,10 +110,3 @@ class MedicalApp(QWidget):
         error_icon = style.standardIcon(QStyle.StandardPixmap.SP_BrowserStop) # type: ignore
         self.diag_tab.btn_analyze.setIcon(error_icon)
         QMessageBox.critical(self, "Помилка аналізу", error_msg)
-
-if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    app.setStyle("Fusion")
-    window = MedicalApp()
-    window.show()
-    sys.exit(app.exec())

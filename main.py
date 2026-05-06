@@ -1,3 +1,8 @@
+import sys
+import argparse
+import os
+from dotenv import load_dotenv
+
 from src.imaging.image_converter import DICOMProcessor
 from src.imaging.utils import verify_npy_conversion, split_data
 from src.imaging.image_augmentation import augment_and_save_npy_dataset, augment_and_save_png_dataset
@@ -6,10 +11,20 @@ from src.ml_module.data_loader import load_dataset
 from src.ml_module.ml_npy_model import start_npy_model_pipeline
 from src.ml_module.ml_png_model import start_png_model_pipeline, start_stage2_png_pipeline
 from src.ml_module.ml_npy_model import start_npy_model_pipeline, start_stage2_npy_pipeline
-from dotenv import load_dotenv
-import os
+
+from PyQt6.QtWidgets import QApplication
+from src.ui.main_window import MedicalApp
+
+def run_gui():
+    """Starts the PyQt6 GUI"""
+    app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+    window = MedicalApp()
+    window.show()
+    sys.exit(app.exec())
 
 def print_menu():
+    """Prints CLI menu"""
     print("\n" + "="*30)
     print("KNEE PATHOLOGY PIPELINE")
     print("="*30)
@@ -25,8 +40,8 @@ def print_menu():
     print("-"*30)
     print("Choice: ", end="")
 
-if __name__ == "__main__":
-    
+def run_cli():
+    """Starts the Text-Based Menu Interface"""
     load_dotenv()
     
     conditions_dataset_folder = os.getenv('KNEE_CONDITIONS_DATASET')
@@ -44,15 +59,13 @@ if __name__ == "__main__":
     
     processor = DICOMProcessor()
     
-    # High Fidelity (64, 160, 160), Standard Balanced (48, 224, 224), Deep MRI (96, 128, 128), Speed (32, 128, 128)
+    # Possible variations: (64, 160, 160), (48, 224, 224), (96, 128, 128), (32, 128, 128)
     target_shape = (32, 128, 128)
     target_spacing = (1.0, 1.0, 1.0)
     cache_in_ram = True
-    batch_size = 64
     
     while True:
         print_menu()
-        
         try:
             choice_input = input()
             if not choice_input.isdigit():
@@ -117,3 +130,14 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"\n[ERROR] An error occurred in main loop: {e}")
             print("Returning to menu...\n")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Knee Pathology Diagnostic System")
+    parser.add_argument('--cli', action='store_true', help="Launch the text-based CLI instead of the GUI")
+    
+    args = parser.parse_args()
+    
+    if args.cli:
+        run_cli()
+    else:
+        run_gui()
