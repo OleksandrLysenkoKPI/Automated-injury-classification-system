@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from scipy.ndimage import zoom
-from skimage.restoration import denoise_wavelet, estimate_sigma
+from skimage.restoration import denoise_wavelet
 
 def resize_3d_tensor(tensor: torch.Tensor, target_shape: tuple[int, int, int]) -> torch.Tensor:
     """
