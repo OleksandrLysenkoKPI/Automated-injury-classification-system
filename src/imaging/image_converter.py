@@ -14,12 +14,21 @@ from ..logger_module.logger import CustomLogger
 logger = CustomLogger("Imaging_log")
 
 class DICOMProcessor:
+    """
+    Main engine for medical image conversion and standardization.
+    
+    Responsible for transforming raw DICOM archives into standardized <br>
+    Hounsfield Unit (HU) volumes compatible with neural network inputs.
+    """
     def __init__(self):
         self.ds = None
         self._pixels_hu = None
 
     def load_file(self, dicom_path):
-        """Loads a single DICOM file into the processor."""
+        """
+        Reads a DICOM file and validates the presence of pixel data. <br>
+        Returns True if the file is a valid image ready for processing.
+        """
         if not os.path.exists(dicom_path):
             logger.error(f"Path does not exist: {dicom_path}")
             return False
@@ -49,7 +58,10 @@ class DICOMProcessor:
     
     @property
     def pixels_hu(self):
-        """Lazy loading and rescaling into Hounsfield units (HU)"""
+        """
+        Lazy property that rescales raw pixel intensities into Hounsfield Units (HU)
+        using the Rescale Slope and Intercept from DICOM metadata.
+        """
         if self.ds is None:
             raise ValueError("No DICOM file loaded. Call load_file() first.")
         
@@ -64,7 +76,10 @@ class DICOMProcessor:
     
     @property
     def spacing(self):
-        """Returns (SliceThickness, PixelSpacing_H, PixelSpacing_W)"""
+        """
+        Extracts physical voxel dimensions (Z, H, W) from DICOM headers, 
+        supporting both standard and functional group sequences.
+        """
         if self.ds is None:
             return (1.0, 1.0, 1.0)
         
@@ -96,7 +111,10 @@ class DICOMProcessor:
         return (z_spacing, h_spacing, w_spacing)
     
     def get_normalized(self, data, target_range=(0, 1), clamping_percentile=(1, 99)):
-        """Internal helper to normalize any given array to a specific range and handle outliers via clamping."""
+        """
+        Clamps outliers using percentiles and scales the intensity values 
+        to a specific range (e.g., 0.0-1.0 or 0-255).
+        """
         data = data.astype(np.float32)
         
         lower_bound = np.percentile(data, clamping_percentile[0])
@@ -115,8 +133,14 @@ class DICOMProcessor:
         
         return normalized.astype(np.float16)
     
-    def get_processed_volume(self, target_range=(0, 1), target_spacing=(1.0, 1.0, 1.0), target_shape=(32, 128, 128)):
-        """Applies the full preprocessing pipeline to the current DICOM object."""
+    def get_processed_volume(
+        self, target_range: tuple[int, int] = (0, 1), 
+        target_spacing: tuple[float, float, float] = (1.0, 1.0, 1.0), 
+        target_shape: tuple[int, int, int] = (32, 128, 128)):
+        """
+        Executes the full clinical pipeline: Wavelet denoising, Voxel resampling, <br>
+        Knee-specific cropping (BBox), and 3D interpolation to the target shape.
+        """
         try:
             data = self.pixels_hu.astype(np.float32)
             
@@ -141,7 +165,10 @@ class DICOMProcessor:
         return None
 
     def save_as_png(self, data, output_path):
-        """Slices the volume and saves as PNGs."""
+        """
+        Converts a 3D volume into a series of 2D PNG slices, <br>
+        maintaining spatial order for visualization or 2D training.
+        """
         data = np.squeeze(data)
         if data.ndim == 3:
             base_name = os.path.splitext(os.path.basename(output_path))[0]
@@ -155,10 +182,13 @@ class DICOMProcessor:
             return True
         return False
     
-    def batch_conversion(self, input_dir, output_png_dir=None, output_npy_dir=None, 
-                         start_idx: int = 1, target_shape: tuple[int, int, int] = (32, 128, 128), target_spacing: tuple[float, float, float]=(1.0, 1.0, 1.0)):
+    def batch_conversion(
+        self, input_dir, output_png_dir=None, output_npy_dir=None, 
+        start_idx: int = 1, target_shape: tuple[int, int, int] = (32, 128, 128), 
+        target_spacing: tuple[float, float, float]=(1.0, 1.0, 1.0)):
         """
-        Iterates through a folder and converts all DICOM files to png and npy.
+        Iterates through a directory to convert all valid DICOM slices 
+        into unified .npy volumes and .png images.
         """
         files = [f for f in os.listdir(input_dir) if f.endswith('.dcm')]
         current_idx = start_idx
@@ -193,6 +223,10 @@ class DICOMProcessor:
                     
     @staticmethod
     def extract_identity(folder_name: str):
+        """
+        Parses clinical folder names to extract patient identifiers and 
+        detected body side (Left/Right) based on naming conventions.
+        """
         parts = folder_name.upper().split('I')
         raw_name = parts[0].strip()
         
@@ -206,6 +240,10 @@ class DICOMProcessor:
     
     @staticmethod
     def process_single_patient(patient_path, dataset_name, condition_name, patient_label, output_base_png, output_base_npy, target_shape, target_spacing):
+        """
+        Independent worker function designed for parallel processing <br>
+        of an individual patient's full imaging record.
+        """
         processor = DICOMProcessor()
         sub_path = os.path.join(dataset_name, condition_name or "", patient_label)
         
@@ -234,8 +272,8 @@ class DICOMProcessor:
         target_spacing: tuple[float, float, float] = (1.0, 1.0, 1.0)
     ):
         """
-        Iterates through all the branch of a specified path and converts files,
-        recreating folder structure without a timestamp in folder directories.
+        High-level orchestrator that uses multiprocessing (ProcessPoolExecutor) <br>
+        to convert an entire multi-class dataset into an anonymized, structured format.
         """
         patient_name_to_id = {}
         next_id = 1

@@ -7,25 +7,41 @@ from ..logger_module.logger import CustomLogger
 logger = CustomLogger("Imaging_augmentation_log")
 
 def is_valid_slice(img_array: np.ndarray, std_threshold: float = 10.0):
-    """Checks if slice is not empty (black)
+    """
+    Validates if an image slice contains informative data rather than empty black space.
 
     Args:
-        img_array (np.ndarray): _description_
-        std_threshold (float, optional): Standard deviation threshold value. Defaults to 10.0.
+        img_array (np.ndarray): The pixel data of the image slice.
+        std_threshold (float): Variance threshold to distinguish data from noise/black background.
     """
     return np.std(img_array) > std_threshold
 
 def add_noise_to_npy(data: np.ndarray, standard: float) -> np.ndarray:
+    """
+    Applies Gaussian noise to a 3D/2D NumPy array.
+    
+    Args:
+        data (np.ndarray): The input numerical data.
+        standard (float): Standard deviation for the Gaussian distribution.
+    """
     noise = np.random.normal(0, standard, data.shape).astype(np.float16)
     return data + noise
 
 def add_noise_to_png(img_array: np.ndarray, intensity: float = 0.02):
+    """
+    Applies additive Gaussian noise to an 8-bit image array.
+    
+    The function converts data to float32 for processing, applies noise, <br>
+    clips the values to the valid 0-255 range, and returns the uint8 array.
+    """
     noise = np.random.randn(*img_array.shape) * (intensity * 255)
     noised_img = img_array.astype(np.float32) + noise
     return np.clip(noised_img, 0, 255).astype(np.uint8)
 
 def augment_and_save_png_dataset(root_path: str | Path, std_threshold: float = 10.0):
-    """Augments given PNG image and saves it in a separate folder. Includes several augmentations:
+    """
+    Automates the augmentation pipeline for a PNG-based dataset. <br>
+    Includes several augmentations:
     1. Original.
     2. Horizontal flip.
     3. Brightness Jitter.
@@ -33,8 +49,8 @@ def augment_and_save_png_dataset(root_path: str | Path, std_threshold: float = 1
     And their respective combinations.
 
     Args:
-        root_path (str | Path): Path to folder with data for augmentation.
-        std_threshold(float): Standard deviation threshold value. Defaults to 10.0
+        root_path (str | Path): Source directory containing PNG files.
+        std_threshold (float): Threshold for is_valid_slice check.
     """
     root_path = Path(root_path)
     output_base = root_path.parents[1] / "train_augmented_png"
@@ -111,7 +127,9 @@ def augment_and_save_png_dataset(root_path: str | Path, std_threshold: float = 1
         
 # TODO: update for a new folder structure
 def augment_and_save_npy_dataset(root_path: str | Path):
-    """Augments given NumPy data and saves it in a separate folder. Includes several augmentations:
+    """
+    Automates the augmentation pipeline for a 3D/Normalized NumPy dataset. <br>
+    Includes several augmentations:
     1. Original.
     2. Horizontal flip.
     3. Brightness Jitter.
@@ -119,7 +137,7 @@ def augment_and_save_npy_dataset(root_path: str | Path):
     And their respective combinations.
 
     Args:
-        root_path (str | Path): Path to folder with data for augmentation
+        root_path (str | Path): Source directory containing .npy volume files.
     """
     root_path = Path(root_path)
     output_base = root_path.parents[1] / "train_augmented_npy"

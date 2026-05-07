@@ -6,7 +6,11 @@ from skimage.restoration import denoise_wavelet, estimate_sigma
 
 def resize_3d_tensor(tensor: torch.Tensor, target_shape: tuple[int, int, int]) -> torch.Tensor:
     """
-    Centralized cropping or padding for a 3D tensor.
+    Performs centralized spatial normalization via cropping or padding.
+    
+    Ensures the 3D tensor matches the target dimensions required by the <br>
+    neural network. If the input is larger, it crops the center; if smaller, <br>
+    it applies symmetric zero-padding to maintain anatomical centering.
     """
     c, d, h, w = tensor.shape
     td, th, tw = target_shape
@@ -46,7 +50,10 @@ def resize_3d_tensor(tensor: torch.Tensor, target_shape: tuple[int, int, int]) -
 
 def get_knee_bbox(data, threshold=0.01):
     """
-    Cuts out the area with the knee, discarding the void around it.
+    Extracts the anatomical region of interest (ROI) by removing empty space.
+    
+    Identifies the bounding box containing the knee joint based on pixel <br>
+    intensity thresholds. This reduces the input volume to the relevant tissues.
     """
     coords = np.argwhere(data > threshold)
     if coords.size == 0:
@@ -58,12 +65,11 @@ def get_knee_bbox(data, threshold=0.01):
     return data[d0:d1, h0:h1, w0:w1]
 
 def resample_3d(data, current_spacing, target_spacing=(1.0, 1.0, 1.0)):
-    """Changes array size based on physical distancce between voxels.
-
-    Args:
-        data (_type_): 3D array [D, H, W]
-        current_spacing (tuple): Current voxel size (SliceThickness, PixelSpacing_H, PixelSpacing_W)
-        target_spacing (tuple): Target voxel size.
+    """
+    Standardizes the physical resolution (voxel spacing) of the 3D volume.
+    
+    Uses trilinear interpolation (zoom) to adjust the volume so that each <br>
+    voxel represents a uniform physical size (e.g., 1x1x1 mm).
     """
     scale_factors = [c / t for c, t in zip(current_spacing, target_spacing)]
     
@@ -73,7 +79,10 @@ def resample_3d(data, current_spacing, target_spacing=(1.0, 1.0, 1.0)):
 
 def wavelet_denoising_3d(data):
     """
-    Noise reduction in 3D data using wavelet transformation.
+    Applies advanced noise reduction using 3D Wavelet Transformation.
+    
+    Utilizes the 'BayesShrink' method and soft-thresholding to remove
+    MRI-specific noise.
     """
     lower = np.percentile(data, 1)
     upper = np.percentile(data, 99)

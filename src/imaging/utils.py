@@ -10,11 +10,16 @@ from ..logger_module.logger import CustomLogger
 
 logger = CustomLogger("Imaging_utils_log")
 
-def split_data(npy_root: str | Path, png_root: str | Path, output_base: str | Path,
-               train_ratio: float = 0.6, val_ratio: float = 0.25):
+def split_data(
+    npy_root: str | Path, png_root: str | Path, output_base: str | Path,
+    train_ratio: float = 0.6, val_ratio: float = 0.25):
     """
-    Splits data into Train, Val, and Test at the patient ID level.
-    Ensures that the L and R knees of the same patient fall into the same sample.
+    Orchestrates the Train/Validation/Test dataset split at the patient level.
+    
+    - Groups all bilateral scans (Left and Right knees) <br>
+      of a single patient to ensure they remain within the same set, preventing data leakage.
+    - Synchronizes the split for both NPY (3D) and PNG (2D) folders simultaneously.
+    - Shuffles unique patient IDs to ensure a representative mix of pathologies across all splits.
     """
     logger.info("Starting the process of separating data by patient identifiers")
     
@@ -84,7 +89,14 @@ def split_data(npy_root: str | Path, png_root: str | Path, output_base: str | Pa
 
 # TODO: Legacy code
 def verify_npy_conversion(processor, dicom_path, npy_path):
-    """Compares original DICOM with loaded NumPy file"""
+    """
+    [Legacy] Validates the data integrity of the DICOM-to-NumPy conversion process.
+    
+    Calculates the Pearson correlation coefficient between the original <br>
+    Hounsfield Unit (HU) data and the processed NumPy array. Provides <br>
+    side-by-side visual verification to ensure no spatial orientation <br>
+    or intensity scaling errors occurred during processing.
+    """
     try:
         if not processor.load_file(dicom_path):
             raise ValueError(f"Can't load DICOM: {dicom_path}")
