@@ -14,11 +14,26 @@ from ..logger_module.logger import CustomLogger
 logger = CustomLogger("DataLoader_log")
 
 def is_valid_slice(img_array: np.ndarray, std_threshold: float = 10.0):
-    """Checks if slice is empty (black)"""
+    """
+    Checks if the slice is informative (not empty).
+
+    Uses a threshold of the standard deviation of pixel intensity to filter out <br>
+    completely black or uninformative images.
+    """
     if img_array is None: return False
     return np.std(img_array.astype(np.float32)) > std_threshold
 
 class KneeDataset(Dataset):
+    """
+    A universal dataset class for knee pathology analysis.
+
+    Supports:
+    - Two data modes: 3D volumes (.npy) and 2D slices (.png).
+    - Two-stage classification: Stage 1 (binary: normal/pathological) and <br>
+    Stage 2 (multi-class: differentiation of 6 types of pathologies).
+    - Data caching in random access memory (RAM) to accelerate learning.
+    - On-the-fly augmentation for 2D images (.png).
+    """
     def __init__(self, root_dir: str | Path, mode: str = "png", stage: int = 1, is_train: bool = False, cache_in_ram: bool = False):
         self.root_dir = Path(root_dir)
         self.mode = mode.lower()
@@ -75,7 +90,10 @@ class KneeDataset(Dataset):
         
         
     def _build_dataset(self):
-        """Collects path files and filters out empty slices"""
+        """
+        Scans file system, maps folder names to class labels according to the current <br>
+        Stage, and filters out uninformative snapshots.
+        """
         if not self.root_dir.exists():
             logger.warning(f"Path not found: {self.root_dir}")
             return
@@ -112,7 +130,10 @@ class KneeDataset(Dataset):
             self._load_to_ram()
     
     def _load_file(self, file_path: Path):
-        """Multi format file reading"""
+        """
+        Reads a file from disk and converts it to a normalized PyTorch tensor. <br>
+        For NPY, performs Z-score normalization, for PNG, intensity scaling to the range [0, 1].
+        """
         try:
             if self.mode == 'npy':
                 data = np.load(file_path).astype(np.float32)
@@ -137,6 +158,7 @@ class KneeDataset(Dataset):
             return torch.zeros((1, 128, 128))
 
     def _load_to_ram(self):
+        """Preloads the entire dataset into RAM."""
         logger.info(f"Caching {self.mode} data into RAM...")
         for file_path, label in self.samples:
             self.cached_data.append(self._load_file(file_path))
@@ -165,8 +187,22 @@ class KneeDataset(Dataset):
             
         return tensor.float(), label
 
-def load_dataset(base_data_path: str | Path, batch_size: int = 16, mode: str = "png", stage: int = 1, cache_in_ram: bool = False):
-    """Loads dataset and returns DataLoader objects with list of found classes"""
+def load_dataset(
+    base_data_path: str | Path, batch_size: int = 16, 
+    mode: str = "png", stage: int = 1, cache_in_ram: bool = False
+):
+    """
+    Creates and returns DataLoader objects for training, validation, and test sets.
+
+    Key features:
+    1. Automatic path splitting: base_path/{split}/{mode}.
+    2. Class balancing: Uses WeightedRandomSampler for training set, <br>
+    which solves the imbalance between healthy cases and rare pathologies.
+    3. Optimization: Adjusts pin_memory and num_workers depending on RAM cache usage.
+
+    Returns:
+        output (tuple): (train_loader, val_loader, test_loader, list_of_classes)
+    """
     try:
         base_path = Path(base_data_path)
         

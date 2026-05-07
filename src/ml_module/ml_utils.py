@@ -12,6 +12,14 @@ import matplotlib.pyplot as plt
 logger = CustomLogger("ML_utils_log")
 
 def verify_dataset_processing(dataset, sample_idx=0):
+    """
+    Visualizes a processed sample from the dataset to ensure correct preprocessing.
+    
+    This function retrieves a tensor and its label, logs the shape and class <br>
+    information, and displays a middle-depth grayscale slice. It also prints <br>
+    statistical metadata (min, max, and mean values) to verify that <br>
+    normalization and data loading are functioning as expected.<br>
+    """
     tensor, label = dataset[sample_idx]
     
     logger.info(f"Tensor shape after processing: {tensor.shape}")
@@ -32,13 +40,26 @@ def verify_dataset_processing(dataset, sample_idx=0):
     plt.show()
 
 def check_pytorch_install():
+    """
+    Checks and logs the current status of the deep learning environment.
+    
+    Reports the installed PyTorch version, CUDA availability for GPU <br>
+    acceleration, the specific CUDA version, and the total number of <br>
+    detected GPUs available for training or inference. <br>
+    """
     logger.info(f"PyTorch version: {torch.__version__}")
     logger.info(f"CUDA available: {torch.cuda.is_available()}")
     logger.info(f"CUDA version: {torch.version.cuda}")
     logger.info(f"Number OF GPUs: {torch.cuda.device_count()}")
 
 def get_dataset_paths():
-    """Loads and checks paths from environment"""
+    """
+    Retrieves organized paths for all dataset components from environment variables.
+    
+    Loads configuration from a .env file and constructs a dictionary of paths <br>
+    for training, validation, and testing sets in both NPY (3D) and PNG (2D) <br>
+    formats. Includes paths for augmented datasets to streamline pipeline management. <br>
+    """
     load_dotenv()
 
     dataset_env = os.getenv("PREPARED_KNEE_DATASET")
@@ -61,7 +82,13 @@ def get_dataset_paths():
     }
 
 def numpy_examiner(numpy_folder_root: str | Path, print_paths: bool = False):
-    """Prints grouped shapes and relative paths of all .npy files in a folder tree"""
+    """
+    Analyzes a directory tree to identify and group NumPy files by their tensor shapes.
+    
+    Iterates through the specified root folder, loading .npy files in memory-mapped <br>
+    mode to efficiently extract their shapes. This is a critical debugging tool <br>
+    for ensuring data consistency across large medical imaging datasets. <br>
+    """
     def print_file_paths(paths):
         print("Path to files:")
         for p in paths:
@@ -89,7 +116,15 @@ def numpy_examiner(numpy_folder_root: str | Path, print_paths: bool = False):
         print(f"Shape {list(shape)}")
         if print_paths: print_file_paths(paths)
 
+# TODO: Legacy code
 def organize_dataset(source_root, destination_root, train_ratio=0.8):
+    """
+    [Legacy] Reorganizes a raw dataset into a structured train/test split.
+    
+    Shuffles patient data at the folder level and copies .npy files into a new <br>
+    directory hierarchy compatible with standard data loaders. It logs the <br>
+    total number of files processed per class to ensure balanced distribution. <br>
+    """
     conditions_list = [d for d in os.listdir(source_root) if os.path.isdir(os.path.join(source_root, d))]
     
     for condition in conditions_list:
@@ -109,7 +144,7 @@ def organize_dataset(source_root, destination_root, train_ratio=0.8):
             for patient in split_list:
                 patient_path = os.path.join(condition_path, patient)
                 
-                for root, dirs, files in os.walk(patient_path):
+                for root, _, files in os.walk(patient_path):
                     for filename in files:
                         if filename.endswith('.npy'):
                             new_name = f"{counter:06d}.npy"

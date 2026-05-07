@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -19,6 +19,13 @@ from sklearn.metrics import classification_report
 logger = CustomLogger("ML_NPY_model_log")
 
 class DetailBlock3D(nn.Module):
+    """
+    Implementation of a basic 3D Residual Block.
+    
+    - Includes 3D convolution, batch normalization, and LeakyReLU activation.
+    - Implements a 'shortcut connection' mechanism to prevent gradient fading.
+    - If the input and output dimensions do not match, a 1x1x1 projection convolution is used.
+    """
     def __init__(self, in_c, out_c, stride=1):
         super().__init__()
         self.conv = nn.Conv3d(in_c, out_c, kernel_size=3, padding=1, stride=stride, bias=False)
@@ -37,6 +44,13 @@ class DetailBlock3D(nn.Module):
         
         
 class KneeResidualAttentionNet(nn.Module):
+    """
+    Custom neural network architecture for analyzing 3D MRI volumes of the knee joint.
+    
+    - Uses DetailBlock3D for feature extraction.
+    - Implements a depth-slice Attention mechanism that allows the model to adaptively weight the importance of each MRI slice.
+    - Includes a classification head with BatchNorm and Dropout to stabilize training.
+    """
     def __init__(self, num_classes: int, dropout_p: float = 0.5):
         super().__init__()
         
@@ -77,6 +91,18 @@ class KneeResidualAttentionNet(nn.Module):
         return self.classifier(combined_features)
 
 class FocalLoss(nn.Module):
+    """
+    Implementation of Focal Loss to solve the problem of class imbalance in medical data.
+
+    Formula:
+    $ 
+    `FL(p_t) = -(1 - p_t)^gamma * log(p_t)` 
+    $
+
+    Where:
+    - gamma (γ): focusing parameter that reduces the contribution of easy-to-classify examples.
+    - label_smoothing: regularization technique to prevent overfitting.
+    """
     def __init__(self, weight=None, gamma=2.0, label_smoothing=0.0):
         super().__init__()
         self.weight = weight
@@ -90,6 +116,13 @@ class FocalLoss(nn.Module):
         return focal_loss.mean()
 
 class EarlyStopping:
+    """
+    Early stopping monitor to prevent overfitting during the training process.
+    
+    Criteria for stopping:
+    1. Validation loss does not improve for a specified number of epochs (patience).
+    2. The accuracy gap between training and validation sets exceeds a defined threshold (max_gap).
+    """
     def __init__(self, patience: int = 12, min_delta: float = 0.005, max_gap: float = 20.0):
         self.patience, self.min_delta, self.max_gap = patience, min_delta, max_gap
         self.counter, self.best_loss, self.early_stop = 0, None, False
@@ -110,16 +143,16 @@ class EarlyStopping:
 
 
 def train_model(
-    model, 
-    train_loader, 
-    val_loader, 
-    criterion, 
-    optimizer, 
-    scheduler, 
-    device, 
-    epochs, 
-    stage_config
+    model: Any, train_loader: Any, val_loader: Any, criterion: Any, 
+    optimizer: Any, scheduler: Any, device: Any, epochs: int, stage_config: Any
 ):
+    """
+    Main training loop of a model with support for Mixed Precision.
+
+    - Trains on the training set and validates after each epoch.
+    - Uses GradScaler to optimize memory on the GPU and EarlyStopping for quality control.
+    - Returns the model with the best weights for validation accuracy.
+    """
     scaler = GradScaler("cuda")
     best_val_acc = 0.0
     best_model_state = None
@@ -188,6 +221,12 @@ def evaluate_model(
     device: torch.device,
     class_names: list[str]
 ):
+    """
+    Performs a comprehensive evaluation of the model on the held-out test set.
+    
+    Generates a classification report including Precision, Recall, and F1-score <br>
+    for each pathology class, providing insights into model performance per condition.
+    """
     logger.info("Starting model evaluation")
     model.eval()
     all_predictions, all_labels = [], []
@@ -221,12 +260,16 @@ def evaluate_model(
 
 def start_npy_model_pipeline(
     base_data_path: str | Path ="data/prepared_data",
-    epochs: int = 40, 
-    batch_size: int = 4,
-    mode: str = 'npy', 
-    save_file_name: str = "knee_3d_binary_model",
+    epochs: int = 40, batch_size: int = 4,
+    mode: str = 'npy', save_file_name: str = "knee_3d_binary_model",
     cache_in_ram: bool = False
 ):
+    """
+    Complete first stage training pipeline (Stage 1: Binary Classification).
+
+    - Task: Determining the presence of pathology (Normal vs Pathology).
+    - Process: Loading data (.npy), initializing the architecture, training and saving weights.
+    """
     cudnn.benchmark = True
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
@@ -260,6 +303,14 @@ def start_stage2_npy_pipeline(
     save_file_name: str = "knee_3d_stage2_6classes",
     cache_in_ram: bool = False
 ):
+    """
+    Stage 2: Differential Diagnosis training pipeline.
+
+    - Task: Classification of a specific type of pathology among 6 classes.
+    - Feature: Implements 'Model Surgery' — loads the weights of the binary model, <br>
+    replaces the last linear layer with a multi-class one and performs fine-tuning <br>
+    of only the classifier, freezing the feature extraction blocks. <br>
+    """
     cudnn.benchmark = True
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
@@ -267,14 +318,14 @@ def start_stage2_npy_pipeline(
     
     model = KneeResidualAttentionNet(num_classes=2, dropout_p=0.6).to(device)
     
-    # 3. Binary weights load
+    # Binary weights load
     try:
         model.load_state_dict(torch.load(binary_model_path))
         logger.info(f"3D Base weights loaded.")
     except Exception as e:
         logger.error(f"Failed to load binary 3D model: {e}"); return
 
-    # 4. Surgery on classifier
+    # Surgery on classifier
     classifier_seq = cast(nn.Sequential, model.classifier)
     in_features = cast(nn.Linear, classifier_seq[4]).in_features
     classifier_seq[4] = nn.Linear(in_features, len(classes))

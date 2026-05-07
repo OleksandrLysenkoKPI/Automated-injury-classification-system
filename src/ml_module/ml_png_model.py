@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -17,6 +17,15 @@ from sklearn.metrics import classification_report
 logger = CustomLogger("ML_PNG_model_log")
 
 class KneeResNet(nn.Module):
+    """
+    Knee pathology classification model based on the ResNet-18 architecture.
+    
+    Features:
+    - Modified first layer (conv1) to accept single-channel (grayscale) 2D MRI slices.
+    - Customizable backbone freezing for efficient transfer learning.
+    - Replaced fully connected (FC) head with a deep classifier including <br>
+      Batch Normalization, ReLU activation, and Dropout for regularization.
+    """
     def __init__(self, num_classes: int, dropout_p: float = 0.4, freeze_backbone: bool = True):
         super().__init__()
         self.model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
@@ -43,6 +52,13 @@ class KneeResNet(nn.Module):
         return self.model(x)
 
 class FocalLoss(nn.Module):
+    """
+    Implementation of Focal Loss to address class imbalance in medical imaging datasets.
+    
+    This loss function down-weights easy examples and focuses training on hard, <br>
+    misclassified samples. Includes label smoothing to improve generalization <br>
+    and prevent overfitting to noisy medical labels.
+    """
     def __init__(self, weight=None, gamma=2.0, label_smoothing=0.0):
         super(FocalLoss, self).__init__()
         self.weight = weight
@@ -61,6 +77,13 @@ class FocalLoss(nn.Module):
         return focal_loss.mean()
 
 class EarlyStopping:
+    """
+    Early stopping monitor to prevent overfitting during the training process.
+    
+    Criteria for stopping:
+    1. Validation loss does not improve for a specified number of epochs (patience).
+    2. The accuracy gap between training and validation sets exceeds a defined threshold (max_gap).
+    """
     def __init__(self, patience: int = 12, min_delta: float = 0.005, max_gap: float = 20.0):
         self.patience = patience
         self.min_delta = min_delta
@@ -89,7 +112,12 @@ class EarlyStopping:
             self.counter = 0
 
 def get_optimizer_stage2(model, lr_backbone=1e-6, lr_head=1e-4):
-    """Creates an optimizer with different learning rates for Stage 2"""
+    """
+    Creates a multi-learning rate optimizer for the differential diagnosis stage (Stage 2).
+    
+    Applies a very low learning rate to the ResNet backbone layers to preserve <br>
+    learned features, while using a higher rate for the classification head.
+    """
     return optim.AdamW([
         {'params': model.model.conv1.parameters(), 'lr': lr_backbone},
         {'params': model.model.layer4.parameters(), 'lr': lr_backbone},
@@ -98,6 +126,12 @@ def get_optimizer_stage2(model, lr_backbone=1e-6, lr_head=1e-4):
     ], weight_decay=0.2)
 
 def unfreeze_layers(model: KneeResNet, stage: int):
+    """
+    Progressively unfreezes deep layers of the ResNet backbone during training.
+    
+    This technique allows the model to fine-tune high-level abstract features <br>
+    once the classification head has stabilized.
+    """
     if stage == 1:
         logger.info("++++ Stage 2: Unfreezing Layer 4 ++++")
         for param in model.model.layer4.parameters():
@@ -108,16 +142,18 @@ def unfreeze_layers(model: KneeResNet, stage: int):
             param.requires_grad = True
 
 def train_model(
-    model, 
-    train_loader, 
-    val_loader, 
-    criterion, 
-    optimizer, 
-    scheduler, 
-    device, 
-    epochs, 
-    stage_config
+    model: Any, train_loader: Any, val_loader: Any, criterion: Any, 
+    optimizer: Any, scheduler: Any, device: Any, epochs: int, stage_config: Any
 ):
+    """
+    Main training loop with support for dynamic layer unfreezing and mixed precision.
+    
+    Features:
+    - Automatic unfreezing of backbone layers based on EarlyStopping counter progress.
+    - Mixed Precision training using GradScaler for optimized GPU memory usage.
+    - Real-time logging of epoch metrics (Loss, Accuracy, Train/Val gap).
+    - Returns the model state with the highest recorded validation accuracy.
+    """
     scaler = GradScaler("cuda")
     best_val_acc = 0.0
     best_model_state = None
@@ -196,11 +232,15 @@ def train_model(
     return model
 
 def evaluate_model(
-    model: KneeResNet,
-    test_loader: DataLoader,
-    device: torch.device,
-    class_names: list[str]
+    model: KneeResNet, test_loader: DataLoader, 
+    device: torch.device, class_names: list[str]
 ):
+    """
+    Performs a comprehensive evaluation of the model on the held-out test set.
+    
+    Generates a classification report including Precision, Recall, and F1-score <br>
+    for each pathology class, providing insights into model performance per condition.
+    """
     logger.info("Starting model evaluation")
     model.eval()
     all_predictions, all_labels = [], []
@@ -234,13 +274,19 @@ def evaluate_model(
 
 def start_png_model_pipeline(
     base_data_path: str | Path = "data/prepared_data",
-    epochs: int = 40, 
-    batch_size: int = 32, 
-    mode: str = 'png', 
-    save_file_name: str = "knee_2d_binary_model",
+    epochs: int = 40, batch_size: int = 32, 
+    mode: str = 'png', save_file_name: str = "knee_2d_binary_model",
     cache_in_ram: bool = False
 ):
-    """Starts model training and evaluation pipeline. Saves model at the end."""
+    """
+    Execution pipeline for Stage 1 (Binary Classification: Healthy vs. Pathology).
+    
+    Process:
+    - Loads the 2D PNG dataset.
+    - Initializes the ResNet-18 model with ImageNet pre-trained weights.
+    - Conducts the training cycle with weighted Focal Loss to prioritize pathology detection.
+    - Saves the resulting binary classifier to the 'models/' directory.
+    """
     cudnn.benchmark = True
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
@@ -268,11 +314,19 @@ def start_png_model_pipeline(
 def start_stage2_png_pipeline(
     base_data_path: str | Path = "data/prepared_data",
     binary_model_path: str | Path ="knee_2d_binary_model.pth",
-    epochs: int = 50, 
-    batch_size: int = 64, 
+    epochs: int = 50, batch_size: int = 64, 
     save_file_name: str = "knee_stage2_6classes",
     cache_in_ram: bool = False
 ):
+    """
+    Execution pipeline for Stage 2 (Differential Diagnosis: 6 Pathology Classes).
+    
+    This pipeline implements 'Model Surgery' via Transfer Learning:
+    1. Loads weights from the pre-trained Stage 1 binary model.
+    2. Replaces the final linear layer to match the number of specific pathologies.
+    3. Freezes the feature extractor to focus initial training on the new classifier head.
+    4. Saves the specialized diagnostic model for deployment in the UI.
+    """
     cudnn.benchmark = True
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
