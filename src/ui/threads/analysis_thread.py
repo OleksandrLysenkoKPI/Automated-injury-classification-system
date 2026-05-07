@@ -5,6 +5,9 @@ from ...logger_module.logger import CustomLogger
 logger = CustomLogger("Analysis_Thread")
 
 class AnalysisThread(QThread):
+    """
+    A dedicated worker thread for performing non-blocking diagnostic inference.
+    """
     finished = pyqtSignal(dict)
     error = pyqtSignal(str)
 
@@ -14,6 +17,12 @@ class AnalysisThread(QThread):
         self.input_tensor = input_tensor
 
     def run(self):
+        """
+        The entry point for thread execution.
+        
+        Ensures GPU synchronization if CUDA acceleration is active before <br>
+        emitting the final diagnostic results.
+        """
         try:
             result = self.engine.run_inference_only(self.input_tensor)
             if torch.cuda.is_available():

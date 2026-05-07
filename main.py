@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import QApplication
 from src.ui.main_window import MedicalApp
 
 def run_gui():
-    """Starts the PyQt6 GUI"""
+    """Initializes and launches the PyQt6 graphical environment."""
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     window = MedicalApp()
@@ -41,13 +41,14 @@ def print_menu():
     print("Choice: ", end="")
 
 def get_env_strict(key: str) -> str:
+    """Ensures critical environment configuration is present before execution."""
     value = os.getenv(key)
     if value is None:
         raise ValueError(f"Missing environment variable: {key}")
     return value
 
 def run_cli():
-    """Starts the Text-Based Menu Interface"""
+    """Starts the Interactive Command-Line Interface."""
     load_dotenv()
     
     conditions_dataset_folder = get_env_strict('KNEE_CONDITIONS_DATASET')
@@ -132,6 +133,14 @@ def run_cli():
             print("Returning to menu...\n")
 
 if __name__ == "__main__":
+    """
+    The main execution logic.
+    
+    Parses command-line arguments to determine the execution mode. 
+    Usage:
+        python main.py          Launches the GUI (Default)
+        python main.py --cli    Launches the Administrative CLI
+    """
     parser = argparse.ArgumentParser(description="Knee Pathology Diagnostic System")
     parser.add_argument('--cli', action='store_true', help="Launch the text-based CLI instead of the GUI")
     

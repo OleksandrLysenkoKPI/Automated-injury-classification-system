@@ -14,6 +14,14 @@ from ..logger_module.logger import CustomLogger
 logger = CustomLogger("Main_Window")
 
 class MedicalApp(QWidget):
+    """
+    The central controller and main window class for the Knee Pathology Diagnostic System.
+    
+    This class manages the application's lifecycle, acting as an orchestrator <br>
+    between the graphical user interface (PyQt6), the neural network inference <br>
+    engine, and background processing threads. It maintains the global state <br>
+    for the currently loaded 3D volume and the corresponding input tensors.
+    """
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Knee Pathology Diagnostic System")
@@ -26,6 +34,13 @@ class MedicalApp(QWidget):
         self.setup_ui()
 
     def setup_ui(self):
+        """
+        Initializes and organizes the primary user interface components.
+        
+        Constructs the main layout using a QTabWidget and integrates <br>
+        specialized diagnostic and administrative modules to provide a <br>
+        streamlined workflow for medical data analysis. <br>
+        """
         self.tabs = QTabWidget()
         
         self.diag_tab = DiagnosticsTab(self)
@@ -37,6 +52,14 @@ class MedicalApp(QWidget):
 
     # DIAGNOSTIC LOGIC
     def load_file(self):
+        """
+        Orchestrates the file selection and preprocessing workflow.
+        
+        Opens a native file dialog to support DICOM and NumPy formats. <br>
+        Upon selection, it triggers the inference engine's preprocessing <br>
+        pipeline (denoising, resampling, and normalization) while updating <br>
+        the UI state to reflect the new patient data. <br>
+        """
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Оберіть файл МРТ", "", "DICOM / Numpy (*.dcm *.npy);;All Files (*)"
         )
@@ -66,7 +89,13 @@ class MedicalApp(QWidget):
             QApplication.restoreOverrideCursor()
 
     def update_slice(self):
-        """Orchestrator: Takes data from the model and tells the tab what to draw."""
+        """
+        Synchronizes the 2D visualization with the current 3D volume navigation.
+        
+        Acts as a bridge between the data model and the view, retrieving <br>
+        the specific slice indexed by the UI slider and sending it to <br>
+        the rendering component for display. <br>
+        """
         if self.current_volume is not None:
             idx = self.diag_tab.slider.value()
             total_slices = self.current_volume.shape[0]
@@ -74,6 +103,12 @@ class MedicalApp(QWidget):
             self.diag_tab.update_slice(self.current_volume, idx)
 
     def start_analysis(self):
+        """
+        Initiates the multi-stage neural network classification process.
+        
+        Launches an 'AnalysisThread' to perform computationally intensive <br>
+        inference (Stage 1 and Stage 2) in the background.
+        """
         if self.input_tensor is None: return
         
         self.diag_tab.btn_analyze.setEnabled(False)
@@ -86,6 +121,13 @@ class MedicalApp(QWidget):
         self.analysis_thread.start()
 
     def on_analysis_finished(self, result):
+        """
+        Handles the successful completion of the diagnostic pipeline.
+        
+        Interprets the results from the inference engine, updates the <br>
+        UI with pathology detection status, and populates the Stage 2 <br>
+        progress bars with condition-specific probability scores. <br>
+        """
         style = QApplication.style()
 
         self.diag_tab.btn_analyze.setEnabled(True)
@@ -105,6 +147,12 @@ class MedicalApp(QWidget):
             self.diag_tab.reset_progress_bars()
 
     def on_analysis_error(self, error_msg):
+        """
+        Provides recovery and user feedback in case of pipeline failure.
+        
+        Captures exceptions from the background thread and displays a <br>
+        standardized critical message box.
+        """
         style = QApplication.style()
         self.diag_tab.btn_analyze.setEnabled(True)
         error_icon = style.standardIcon(QStyle.StandardPixmap.SP_BrowserStop) # type: ignore

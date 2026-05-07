@@ -13,7 +13,25 @@ from ..logger_module.logger import CustomLogger
 logger = CustomLogger("Interface_Engine")
 
 class KneeInferenceEngine:
+    """
+    The high-level deployment wrapper for the multi-stage knee pathology diagnostic pipeline.
+    
+    This engine serves as the unified interface for the application, managing:
+    1. Model initialization and 'Model Surgery' for Stage 2 classification.
+    2. Seamless handling of both raw DICOM files and preprocessed NumPy volumes.
+    3. Sequential inference logic (Binary detection followed by multi-class differentiation).
+    4. Hardware acceleration management (CUDA vs. CPU).
+    """
     def __init__(self, binary_model_path: str, stage2_model_path: str, device: str = "cuda"):
+        """
+        Initializes the diagnostic models and prepares the execution environment.
+        
+        - Sets up the hardware device (GPU if available).
+        - Loads the Stage 1 binary model (Healthy vs. Pathology).
+        - Performs 'Model Surgery' on a second instance of the architecture to create 
+          the 6-class Stage 2 diagnostic head.
+        - Instantiates the DICOMProcessor for on-the-fly medical data conversion.
+        """
         try:
             self.device = torch.device(device if torch.cuda.is_available() else "cpu")
             self.classes_s2 = [
@@ -43,7 +61,15 @@ class KneeInferenceEngine:
             logger.error(f"Model initialization failed: {e}")
         
     def preprocess_file(self, file_path: str | Path):
-        """Prepares file for neural network and returns weights for visualization"""
+        """
+        Standardizes input data for neural network compatibility while providing 
+        optimized buffers for UI visualization.
+        
+        1. Formats DICOM archives into 3D volumes via DICOMProcessor.
+        2. Applies Z-score normalization to NumPy inputs to match training distribution.
+        3. Formats volumes into the required [Batch, Channel, Depth, Height, Width] tensor.
+        4. Generates a normalized 8-bit 'display volume' for real-time UI rendering.
+        """
         try:
             path = Path(file_path)
             volume = None
@@ -75,7 +101,20 @@ class KneeInferenceEngine:
             raise
         
     def run_inference_only(self, input_tensor):
-        """Neural network work on provided preprocessed tensor"""
+        """
+        Executes the hierarchical diagnostic pipeline using the provided input tensor.
+        
+        Sequential Logic:
+        - Stage 1: Performs binary classification to detect any pathological signs.
+        - Stage 2 (Conditional): If Stage 1 detects pathology, the Stage 2 model 
+          differentiates between 6 specific conditions.
+        - Employs Softmax for probability scoring and Mixed Precision 
+          (autocast) for faster inference on supported GPUs.
+        
+        Returns:
+            result (dict): A structured summary containing pathology detection flags, 
+                  Stage 1 confidence, and detailed Stage 2 probabilities.
+        """
         logger.info("Start inference (run_inference_only)")
         try:
             with torch.no_grad():

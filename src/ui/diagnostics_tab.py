@@ -11,6 +11,7 @@ class DiagnosticsTab(QWidget):
         self.setup_ui()
         
     def setup_ui(self):
+        """UI setup for diagnostics tab"""
         layout = QHBoxLayout(self) # Separate left (control) and right (MRI) parts
         
         layout.setContentsMargins(20, 20, 20, 20)
