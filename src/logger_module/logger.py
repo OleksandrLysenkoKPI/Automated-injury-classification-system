@@ -4,7 +4,27 @@ from logging.handlers import RotatingFileHandler
 from datetime import datetime
 
 class CustomLogger:
-    def __init__(self, name: str, base_log_dir: str = "logs", create_folder: bool = True, timestamp_folder: bool = False):
+    """
+    A wrapper class for the standard Python logging module to provide structured and persistent logging.
+    
+    - Creates organized folder structures for logs.
+    - Prevents duplicate log entries by checking for existing handlers.
+    - Directs logs to both a physical file and the system console simultaneously.
+    - Uses stacklevel adjustment to correctly identify the calling function.
+    """
+    def __init__(
+        self, name: str, base_log_dir: str = "logs", 
+        create_folder: bool = True, timestamp_folder: bool = False
+    ):
+        """
+        Initializes the logging instance and prepares the file system.
+        
+        Args:
+            name (str): The name of the logger (typically the module name).
+            base_log_dir (str): Root directory for all log storage.
+            create_folder (bool): If True, creates a subfolder specific to this logger.
+            timestamp_folder (bool): If True, appends the current date to the folder name for session isolation.
+        """
         self.logger = logging.getLogger(name)
         
         if self.logger.hasHandlers():
@@ -26,7 +46,10 @@ class CustomLogger:
                 
         self.setup_system_logger(log_file)
     
-    def setup_system_logger(self, log_file: Path):        
+    def setup_system_logger(self, log_file: Path): 
+        """
+        Configures the logging behavior, formatting, and rotation policies.
+        """
         self.logger.setLevel(logging.INFO)
         formatter = logging.Formatter('%(asctime)s - %(funcName)s.%(levelname)s: %(message)s', datefmt='%y-%m-%d %H:%M:%S')
         
