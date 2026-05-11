@@ -34,3 +34,7 @@ Create a `.env` file in the root directory and specify the path to your dataset:
 
 `KNEE_CONDITIONS_DATASET=path/to/conditions/Knee_MRI/dataset`\
 `KNEE_DATASET=path/to/healthy/Knee_MRI/dataset`
+
+`CONVERTED_NPY = data/converted_data/converted_NumPy`
+`CONVERTED_PNG = data/converted_data/converted_PNG`
+`PREPARED_KNEE_DATASET = data/prepared_data`

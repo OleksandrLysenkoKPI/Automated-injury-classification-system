@@ -34,3 +34,7 @@
 
 `KNEE_CONDITIONS_DATASET=шлях/до/датасету/з/патологіями`\
 `KNEE_DATASET=шлях/до/датасету/з/здоровими/зразками`
+
+`CONVERTED_NPY = data/converted_data/converted_NumPy`
+`CONVERTED_PNG = data/converted_data/converted_PNG`
+`PREPARED_KNEE_DATASET = data/prepared_data`
